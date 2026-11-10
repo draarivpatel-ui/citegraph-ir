@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CiteGraph-IR Calibration Sweep</title>
+<meta name="description" content="The abstention threshold sweep and receiver operating characteristic of the CiteGraph-IR abstention score, computed in the browser.">
+<link rel="stylesheet" href="../shell.css">
+<style>
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
+  .chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .grid-line { stroke: var(--rule); stroke-width: 1; }
+  .axis-line { stroke: var(--rule-strong); stroke-width: 1; }
+  .axis-text { fill: var(--text-muted); font-size: 10px; font-family: var(--mono); }
+  .axis-title { fill: var(--text-secondary); font-size: 11px; }
+  .series-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .series-dot { stroke: var(--surface-1); stroke-width: 2; }
+  .diag { stroke: var(--de-emphasis); stroke-width: 1; }
+  .callout { fill: var(--text-primary); font-size: 11px; font-weight: 600; }
+  .callout-ring { fill: none; stroke: var(--text-primary); stroke-width: 1.5; }
+</style>
+</head>
+<body data-page="sweep">
+<header class="top">
+  <a class="brand" href="../index.html">CiteGraph-IR</a>
+  <nav class="nav" aria-label="Pages">
+    <a href="../lab/" data-nav="lab">Retrieval lab</a>
+  </nav>
+  <button class="theme-toggle" id="theme" type="button">Dark mode</button>
+</header>
+
+<main class="wrap">
+  <h1>Calibration sweep</h1>
+  <p class="lede">
+    The abstention score separates answerable questions from unanswerable ones well, but a score
+    only becomes a decision once a threshold is chosen. This page walks every threshold and reads
+    what the decision costs, so the operating point is earned rather than asserted.
+  </p>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Coverage against false answers</h2>
+      <div class="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--series-1)"></span>Coverage</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--series-2)"></span>False answers</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--series-3)"></span>Accuracy</span>
+      </div>
+    </div>
+    <svg class="chart" id="sweep-chart" viewBox="0 0 640 240" role="img"
+         aria-label="Line chart of coverage, false answer rate and accuracy against the abstention threshold."></svg>
+    <p class="hint" id="sweep-note"></p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Receiver operating characteristic</h2>
+      <div class="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--series-1)"></span>Operating points</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--de-emphasis)"></span>Chance</span>
+      </div>
+    </div>
+    <svg class="chart" id="roc-chart" viewBox="0 0 640 300" role="img"
+         aria-label="The receiver operating characteristic of the abstention score, false answer rate against true answer rate."></svg>
+    <p class="hint" id="roc-note"></p>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Every threshold</h2></div>
+    <div class="tbl-scroll">
+      <table id="sweep-table">
+        <thead>
+          <tr>
+            <th scope="col">Threshold</th>
+            <th scope="col">Coverage</th>
+            <th scope="col">False answers</th>
+            <th scope="col">Accuracy</th>
+            <th scope="col">ECE</th>
+            <th scope="col">AUROC</th>
+          </tr>
+        </thead>
+        <tbody id="sweep-body"></tbody>
+      </table>
+    </div>
+    <p class="hint">
+      ECE is the expected calibration error of the score against the labels. It barely moves across
+      the sweep because it measures how well the score magnitude matches the label frequency, and a
+      heuristic score is not trained to be calibrated in absolute terms. AUROC, which only needs the
+      order of the scores to be right, is the more honest readout of this score.
+    </p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Zero dependencies. The engine, the evaluation set and the benchmark all run in this page.</span>
+  <a href="../index.html">Back to the summary</a>
+</footer>
+
+<script type="module">
+  const stored = (() => { try { return localStorage.getItem("citegraph-theme"); } catch { return null; } })();
+  if (stored === "dark" || stored === "light") document.documentElement.dataset.theme = stored;
+  const toggle = document.getElementById("theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = () => (document.documentElement.dataset.theme ?? (prefersDark ? "dark" : "light")) === "dark";
+  const syncToggle = () => { toggle.textContent = isDark() ? "Light mode" : "Dark mode"; };
+  toggle.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("citegraph-theme", next); } catch { /* private mode */ }
+    syncToggle();
+    draw();
+  });
+  syncToggle();
+  for (const link of document.querySelectorAll("[data-nav]")) {
+    if (link.getAttribute("data-nav") === document.body.dataset.page) link.setAttribute("aria-current", "page");
+  }
+
+  const { buildEngine, calibrationSweep, evaluateAbstention, recommendThreshold } = await import("../src/benchmark.js");
+  const { buildReport } = await import("../src/report.js");
+
+  const engine = buildEngine();
+  const sweep = calibrationSweep(engine);
+  const abst = evaluateAbstention(engine);
+  const recommended = recommendThreshold(sweep);
+  const report = buildReport();
+
+  const fmt = (n, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : "-");
+  const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
+
+  /* ---- the sweep chart --------------------------------------------- */
+  const svg = document.getElementById("sweep-chart");
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (name, attrs = {}, parent = svg) => {
+    const node = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+    parent.appendChild(node);
+    return node;
+  };
+
+  const SERIES = [
+    { key: "coverage", label: "Coverage", color: COLORS[0] },
+    { key: "falseAnswerRate", label: "False answers", color: COLORS[1] },
+    { key: "accuracy", label: "Accuracy", color: COLORS[2] }
+  ];
+
+  const PAD = { top: 18, right: 78, bottom: 30, left: 40 };
+  const W = 640, H = 240;
+  const iw = W - PAD.left - PAD.right;
+  const ih = H - PAD.top - PAD.bottom;
+
+  const thresholds = sweep.map((r) => r.threshold);
+  const tMin = Math.min(...thresholds);
+  const tMax = Math.max(...thresholds);
+  const x = (t) => PAD.left + ((t - tMin) / (tMax - tMin || 1)) * iw;
+  const y = (v) => PAD.top + ih - v * ih;
+
+  function draw() {
+    svg.innerHTML = "";
+
+    // Gridlines carry the values that are not directly labeled.
+    for (const tick of [0, 0.25, 0.5, 0.75, 1]) {
+      el("line", { x1: PAD.left, y1: y(tick), x2: PAD.left + iw, y2: y(tick), class: "grid-line" });
+      const label = el("text", { x: PAD.left - 7, y: y(tick) + 3, class: "axis-text", "text-anchor": "end" });
+      label.textContent = tick.toFixed(2);
+    }
+    for (const tick of ticksFor(tMin, tMax)) {
+      const label = el("text", { x: x(tick), y: H - 10, class: "axis-text", "text-anchor": "middle" });
+      label.textContent = tick.toFixed(2);
+    }
+    el("line", { x1: PAD.left, y1: PAD.top + ih, x2: PAD.left + iw, y2: PAD.top + ih, class: "axis-line" });
+    const xt = el("text", { x: PAD.left + iw / 2, y: H - 0, class: "axis-title", "text-anchor": "middle" });
+    xt.textContent = "abstention threshold";
+    const yt = el("text", { x: 12, y: PAD.top + ih / 2, class: "axis-title", "text-anchor": "middle", transform: `rotate(-90 12 ${PAD.top + ih / 2})` });
+    yt.textContent = "rate";
+
+    for (const series of SERIES) {
+      const path = sweep.map((r, i) => `${i === 0 ? "M" : "L"} ${x(r.threshold).toFixed(2)} ${y(r[series.key]).toFixed(2)}`).join(" ");
+      el("path", { d: path, class: "series-line", stroke: series.color });
+    }
+
+    // The end of each line carries its own label. Two series that end at the
+    // same value would collide, so labels sit above their line end and the
+    // legend carries the identity.
+    const ends = SERIES.map((series) => {
+      const last = sweep[sweep.length - 1];
+      const ly = y(last[series.key]);
+      return { series, ly, above: ly - 9 };
+    }).sort((a, b) => a.ly - b.ly);
+    const MIN_GAP = 13;
+    for (let i = 1; i < ends.length; i += 1) {
+      if (ends[i].above - ends[i - 1].above < MIN_GAP) ends[i].above = ends[i - 1].above + MIN_GAP;
+    }
+    for (const end of ends) {
+      const ex = x(sweep[sweep.length - 1].threshold);
+      el("line", { x1: ex, y1: end.ly, x2: ex + 5, y2: end.above, stroke: end.series.color, "stroke-width": 2 });
+      const label = el("text", { x: ex + 9, y: end.above, class: "axis-text", "text-anchor": "start" });
+      label.textContent = end.series.label;
+    }
+
+    // The recommended operating point, marked once.
+    if (recommended) {
+      const cx = x(recommended.threshold);
+      const cy = y(recommended.coverage);
+      el("circle", { cx, cy, r: 9, class: "callout-ring" });
+      el("circle", { cx, cy, r: 4, fill: COLORS[0], class: "series-dot" });
+      const text = el("text", { x: cx, y: cy - 14, class: "callout", "text-anchor": "middle" });
+      text.textContent = `chosen ${recommended.threshold.toFixed(2)}`;
+    }
+
+    document.getElementById("sweep-note").textContent = recommended
+      ? `The chosen threshold is ${recommended.threshold.toFixed(2)}, which keeps coverage at ` +
+        `${(recommended.coverage * 100).toFixed(1)} percent with a false answer rate of ` +
+        `${(recommended.falseAnswerRate * 100).toFixed(0)} percent over the ${report.unanswerable} unanswerable questions.`
+      : "No threshold in the sweep avoids a false answer, so the evaluated operating point is used.";
+  }
+
+  /* ---- the ROC chart ----------------------------------------------- */
+  const rocSvg = document.getElementById("roc-chart");
+  const rocEl = (name, attrs = {}, parent = rocSvg) => {
+    const node = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+    parent.appendChild(node);
+    return node;
+  };
+
+  const RPAD = { top: 18, right: 26, bottom: 34, left: 46 };
+  const RW = 640, RH = 300;
+  const riw = RW - RPAD.left - RPAD.right;
+  const rih = RH - RPAD.top - RPAD.bottom;
+  const rx = (v) => RPAD.left + v * riw;
+  const ry = (v) => RPAD.top + rih - v * rih;
+
+  function drawRoc() {
+    rocSvg.innerHTML = "";
+    for (const tick of [0, 0.25, 0.5, 0.75, 1]) {
+      rocEl("line", { x1: RPAD.left, y1: ry(tick), x2: RPAD.left + riw, y2: ry(tick), class: "grid-line" }, rocSvg);
+      const label = rocEl("text", { x: RPAD.left - 7, y: ry(tick) + 3, class: "axis-text", "text-anchor": "end" }, rocSvg);
+      label.textContent = tick.toFixed(2);
+    }
+    rocEl("line", { x1: RPAD.left, y1: RPAD.top + rih, x2: RPAD.left + riw, y2: RPAD.top + rih, class: "axis-line" }, rocSvg);
+    rocEl("line", { x1: RPAD.left, y1: RPAD.top + rih, x2: RPAD.left + riw, y2: RPAD.top, class: "axis-line" }, rocSvg);
+    const xt = rocEl("text", { x: RPAD.left + riw / 2, y: RH - 4, class: "axis-title", "text-anchor": "middle" }, rocSvg);
+    xt.textContent = "false answer rate";
+    const yt = rocEl("text", { x: 12, y: RPAD.top + rih / 2, class: "axis-title", "text-anchor": "middle", transform: `rotate(-90 12 ${RPAD.top + rih / 2})` }, rocSvg);
+    yt.textContent = "true answer rate";
+
+    // Chance, drawn as the one diagonal reference.
+    rocEl("line", { x1: rx(0), y1: ry(0), x2: rx(1), y2: ry(1), class: "diag" }, rocSvg);
+
+    const points = report.roc;
+    const path = points.map((p, i) => `${i === 0 ? "M" : "L"} ${rx(p[0]).toFixed(2)} ${ry(p[1]).toFixed(2)}`).join(" ");
+    rocEl("path", { d: path, class: "series-line", stroke: COLORS[0] }, rocSvg);
+
+    // Only the operating point at the recommended threshold is marked.
+    if (recommended) {
+      const fpr = recommended.falseAnswerRate;
+      const tpr = recommended.coverage;
+      rocEl("circle", { cx: rx(fpr), cy: ry(tpr), r: 9, class: "callout-ring" }, rocSvg);
+      rocEl("circle", { cx: rx(fpr), cy: ry(tpr), r: 4, fill: COLORS[0], class: "series-dot" }, rocSvg);
+      rocEl("text", { x: rx(fpr) + 14, y: ry(tpr) - 8, class: "callout" }, rocSvg)
+        .textContent = `threshold ${recommended.threshold.toFixed(2)}`;
+    }
+
+    document.getElementById("roc-note").textContent =
+      `Area under the curve is ${abst.auroc.toFixed(4)}. The curve sits well above the diagonal, ` +
+      `which means the ordering of the scores alone carries most of the decision: few false ` +
+      `answers are bought by giving up little coverage.`;
+  }
+
+  function ticksFor(lo, hi) {
+    const span = hi - lo;
+    if (span <= 0.05) return [lo, hi];
+    const step = niceStep(span / 4);
+    const first = Math.ceil(lo / step) * step;
+    const out = [];
+    for (let t = first; t <= hi + 1e-9; t += step) out.push(t);
+    return out;
+  }
+  function niceStep(raw) {
+    const exp = Math.floor(Math.log10(raw));
+    const base = Math.pow(10, exp);
+    const steps = [1, 2, 5, 10];
+    for (const s of steps) if (s * base >= raw - 1e-9) return s * base;
+    return 10 * base;
+  }
+
+  draw();
+  drawRoc();
+
+  const body = document.getElementById("sweep-body");
+  for (const row of sweep) {
+    const tr = document.createElement("tr");
+    const cells = [
+      fmt(row.threshold, 2),
+      fmt(row.coverage),
+      fmt(row.falseAnswerRate),
+      fmt(row.accuracy),
+      fmt(row.ece),
+      fmt(row.auroc)
+    ];
+    tr.innerHTML = cells.map((c) => `<td>${c}</td>`).join("");
+    body.appendChild(tr);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CiteGraph-IR Lab</title>
+<meta name="description" content="Type a question and watch every stage of the CiteGraph-IR retrieval pipeline rank the bundled 40-document citation collection.">
+<link rel="stylesheet" href="../shell.css">
+</head>
+<body data-page="lab">
+<header class="top">
+  <a class="brand" href="../index.html">CiteGraph-IR</a>
+  <nav class="nav" aria-label="Pages">
+    <a href="../sweep/" data-nav="sweep">Calibration sweep</a>
+  </nav>
+  <button class="theme-toggle" id="theme" type="button">Dark mode</button>
+</header>
+
+<main class="wrap">
+  <h1>The retrieval lab</h1>
+  <p class="lede">
+    Every stage runs in this page from the same modules the test suite runs. Type a question, or
+    pick one from the evaluation set, and read the whole collection ranked four ways.
+  </p>
+
+  <section class="panel">
+    <form class="ask" id="ask">
+      <label class="ask-label" for="query">A question about the collection</label>
+      <div class="ask-row">
+        <input id="query" name="query" type="search" autocomplete="off" spellcheck="false"
+               placeholder="which weighting scheme needs no explicit length normalisation" required>
+        <button type="submit">Run</button>
+      </div>
+      <p class="hint" id="hint">
+        Try a question from the set, or anything of your own. Out of collection questions are
+        expected to be refused by the abstention head.
+      </p>
+    </form>
+
+    <div class="chips" role="group" aria-label="Example questions">
+      <button class="chip" type="button" data-q="which weighting scheme needs no explicit document length normalisation because the query likelihood model normalises over length">length normalisation</button>
+      <button class="chip" type="button" data-q="how does the hierarchical navigable small world index trade a small amount of recall for fast search">vector search</button>
+      <button class="chip" data-q="how does the personalised variant replace the teleport vector with a seed distribution over retrieved documents" type="button">PageRank</button>
+      <button class="chip" type="button" data-q="who won the 1998 football world cup final">out of collection</button>
+    </div>
+  </section>
+
+  <section class="verdict" id="verdict" hidden>
+    <div class="verdict-head">
+      <span class="badge" id="verdict-badge">ANSWER</span>
+      <span class="verdict-score">abstention score <b id="score-out">0.0000</b></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <h2>Ranked by stage</h2>
+      <div class="legend" id="legend" hidden>
+        <span class="legend-item"><span class="swatch" style="background:var(--series-1)"></span>Lexical, BM25</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--series-2)"></span>Dense, TF-IDF</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--series-3)"></span>Fused, RRF</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--series-4)"></span>Re-ranked</span>
+      </div>
+    </div>
+    <p class="empty" id="empty">Nothing run yet. The table fills once a question is scored.</p>
+    <div class="tbl-scroll" hidden>
+      <table id="runs">
+        <thead>
+          <tr>
+            <th scope="col">Rank</th>
+            <th scope="col">Document</th>
+            <th scope="col">BM25</th>
+            <th scope="col">TF-IDF</th>
+            <th scope="col">RRF</th>
+            <th scope="col">PageRank</th>
+          </tr>
+        </thead>
+        <tbody id="runs-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" id="evidence-panel" hidden>
+    <div class="panel-head"><h2>Leading evidence span</h2></div>
+    <p class="mono span" id="evidence-span"></p>
+    <p class="hint" id="evidence-note"></p>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Zero dependencies. Engine, evaluation set and benchmark all run in this page.</span>
+  <a href="../index.html">Back to the summary</a>
+</footer>
+
+<script type="module">
+  /* ---- theme ------------------------------------------------------- */
+  const stored = (() => { try { return localStorage.getItem("citegraph-theme"); } catch { return null; } })();
+  if (stored === "dark" || stored === "light") document.documentElement.dataset.theme = stored;
+  const toggle = document.getElementById("theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = () => (document.documentElement.dataset.theme ?? (prefersDark ? "dark" : "light")) === "dark";
+  const syncToggle = () => { toggle.textContent = isDark() ? "Light mode" : "Dark mode"; };
+  toggle.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("citegraph-theme", next); } catch { /* private mode */ }
+    syncToggle();
+  });
+  syncToggle();
+  for (const link of document.querySelectorAll("[data-nav]")) {
+    if (link.getAttribute("data-nav") === document.body.dataset.page) {
+      link.setAttribute("aria-current", "page");
+    }
+  }
+
+  /* ---- engine ------------------------------------------------------ */
+  const { buildEngine, runQuery } = await import("../src/benchmark.js");
+  const ir = await import("../src/ir_engine.js");
+  const { CORPUS } = await import("../src/corpus.js");
+  const engine = buildEngine();
+  const TITLES = new Map(CORPUS.map((d) => [d.id, d.title]));
+  const STAGES = ["lexical", "dense", "fused", "reranked"];
+  const TOP_N = 12;
+
+  const form = document.getElementById("ask");
+  const input = document.getElementById("query");
+  const hint = document.getElementById("hint");
+  const verdict = document.getElementById("verdict");
+  const badge = document.getElementById("verdict-badge");
+  const scoreOut = document.getElementById("score-out");
+  const table = document.querySelector(".tbl-scroll");
+  const body = document.getElementById("runs-body");
+  const empty = document.getElementById("empty");
+  const legend = document.getElementById("legend");
+  const evidencePanel = document.getElementById("evidence-panel");
+  const evidenceSpan = document.getElementById("evidence-span");
+  const evidenceNote = document.getElementById("evidence-note");
+
+  const fmt = (n) => (Number.isFinite(n) ? n.toFixed(4) : "0.0000");
+
+  async function present(text) {
+    // One run per stage over the whole collection, in the order the pipeline runs.
+    const runs = {};
+    for (const stage of STAGES) runs[stage] = runQuery(engine, text, stage);
+    const score = ir.abstentionScore(runs.fused, text, engine.bodiesById);
+    const answer = ir.shouldAnswer(score);
+    scoreOut.textContent = fmt(score);
+
+    verdict.hidden = false;
+    badge.textContent = answer ? "ANSWER" : "ABSTAIN";
+    badge.className = "badge " + (answer ? "badge-good" : "badge-muted");
+    const top = runs.reranked[0];
+    evidencePanel.hidden = false;
+    if (answer && top) {
+      const evidence = ir.faithfulness(text, engine.bodiesById.get(top.id) ?? "", { idf: engine.index.idf });
+      evidenceSpan.textContent = evidence.span ?? "No sentence passed the term overlap filter.";
+      evidenceNote.textContent =
+        `Claim to span faithfulness ${fmt(evidence.score)} over the body of "${TITLES.get(top.id) ?? top.id}". ` +
+        `The score is the idf weighted coverage of the question terms in the strongest sentences.`;
+    } else {
+      evidenceSpan.textContent = "Refused, so no span is offered.";
+      evidenceNote.textContent =
+        "The score sits below the default threshold of 0.1, so the question is reported as out of " +
+        "collection rather than answered from a weakly matching document.";
+    }
+
+    empty.hidden = true;
+    table.hidden = false;
+    legend.hidden = false;
+    body.innerHTML = "";
+
+    const byId = new Map();
+    for (const stage of STAGES) {
+      for (const entry of runs[stage]) {
+        if (!byId.has(entry.id)) byId.set(entry.id, { ranks: {} });
+        byId.get(entry.id).ranks[stage] = entry.rank;
+      }
+    }
+
+    // Rank order follows the re-ranked run, the last stage of the pipeline.
+    const order = runs.reranked.slice(0, TOP_N);
+    for (const entry of order) {
+      const row = byId.get(entry.id);
+      const tr = document.createElement("tr");
+      const cells = [entry.rank, TITLES.get(entry.id) ?? entry.id];
+      for (const stage of STAGES) cells.push(String(row.ranks[stage]));
+      tr.innerHTML = cells.map((c, i) => (i === 1 ? `<td class="doc">${c}</td>` : `<td>${c}</td>`)).join("");
+      body.appendChild(tr);
+    }
+
+    hint.textContent = `Top answer: "${TITLES.get(order[0].id) ?? order[0].id}". Ranks are positions in the whole collection of ${CORPUS.length} documents, so a rank of 20 is a real position, not a truncated list.`;
+  }
+
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const text = input.value.trim();
+    if (text.length > 0) present(text);
+  });
+
+  for (const chip of document.querySelectorAll(".chip")) {
+    chip.addEventListener("click", () => {
+      input.value = chip.dataset.q;
+      present(chip.dataset.q);
+      input.focus();
+    });
+  }
+
+  // Open on a run rather than an empty state, so the four stages are visible
+  // before the reader touches anything.
+  const first = document.querySelector(".chip");
+  if (first) {
+    input.value = first.dataset.q;
+    present(first.dataset.q);
+  }
+</script>
+</body>
+</html>

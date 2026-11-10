@@ -1,0 +1,32 @@
+{
+  "name": "citegraph-ir",
+  "version": "1.0.0",
+  "description": "CiteGraph-IR: a zero-dependency hybrid retrieval and out-of-distribution abstention benchmark workbench over a 40-document scientific citation collection.",
+  "type": "module",
+  "main": "src/ir_engine.js",
+  "scripts": {
+    "test": "node --test test/",
+    "bench": "python3 cli/eval_ir.py",
+    "bench:queries": "python3 cli/eval_ir.py --queries",
+    "report": "node src/report_entry.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/draarivpatel-ui/citegraph-ir.git"
+  },
+  "keywords": [
+    "information-retrieval",
+    "hybrid-search",
+    "bm25",
+    "reciprocal-rank-fusion",
+    "pagerank",
+    "out-of-distribution",
+    "calibration"
+  ],
+  "author": "Aariv Patel",
+  "license": "MIT",
+  "private": false,
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

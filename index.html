@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CiteGraph-IR</title>
+<meta name="description" content="A zero-dependency hybrid retrieval and out of distribution abstention benchmark workbench over a 40-document scientific citation collection.">
+<link rel="stylesheet" href="shell.css">
+<style>
+  /* Hub page only: the KPI row and the pipeline list. Everything chrome-like
+     lives in shell.css so the three pages stay one surface. */
+  .hero { max-width: 70ch; }
+  .hero h1 { font-size: 30px; margin-bottom: 12px; }
+  .hero .ver { font-family: var(--mono); font-size: 13px; color: var(--text-muted); margin-left: 10px; letter-spacing: 0; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .kpi { background: var(--surface-1); padding: 15px 17px 17px; }
+  .kpi .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .kpi .value { font-size: 26px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; }
+  .kpi .foot { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+
+  .meters { display: grid; gap: 13px; max-width: 520px; }
+  .meter { display: grid; grid-template-columns: 1fr auto; gap: 5px 12px; align-items: baseline; }
+  .meter .name { font-size: 13px; color: var(--text-secondary); }
+  .meter .num { font-size: 13px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .meter .track { grid-column: 1 / -1; height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .meter .fill { height: 100%; border-radius: 999px 4px 4px 999px; background: var(--accent); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+  .card { display: block; background: var(--surface-1); border: 1px solid var(--rule); border-radius: 10px; padding: 17px; color: inherit; text-decoration: none; }
+  .card:hover { border-color: var(--rule-strong); background: var(--surface-2); }
+  .card p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+
+  .steps { display: grid; gap: 11px; counter-reset: step; max-width: 620px; }
+  .step { display: grid; grid-template-columns: 26px 1fr; gap: 13px; align-items: start; }
+  .step .n { counter-increment: step; width: 24px; height: 24px; border-radius: 999px; background: var(--surface-2); color: var(--text-secondary); font-size: 12px; font-family: var(--mono); display: grid; place-items: center; }
+  .step .n::before { content: counter(step); }
+  .step .t { font-size: 14px; }
+  .step .t b { font-weight: 600; }
+  .step .t span { color: var(--text-secondary); }
+
+  .prose p { font-size: 14px; color: var(--text-secondary); margin: 0 0 14px; max-width: 70ch; }
+</style>
+</head>
+<body data-page="home">
+<header class="top">
+  <span class="brand">CiteGraph-IR</span>
+  <nav class="nav" aria-label="Pages">
+    <a href="lab/" data-nav="lab">Retrieval lab</a>
+    <a href="sweep/" data-nav="sweep">Calibration sweep</a>
+  </nav>
+  <button class="theme-toggle" id="theme" type="button">Dark mode</button>
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Hybrid retrieval with an honest refusal<span class="ver">v1.0.0</span></h1>
+    <p class="lede">
+      A <strong>zero-dependency</strong> retrofit benchmark workbench. Okapi BM25 and character
+      n-gram TF-IDF rank a 40-document scientific citation collection, Reciprocal Rank Fusion merges
+      the two runs, and personalized PageRank over the citation graph re-ranks what survives. An
+      abstention head then decides which questions the collection can actually answer, and the
+      calibration, ECE and AUROC of that decision are all reported rather than assumed.
+    </p>
+  </div>
+
+  <section aria-labelledby="kpi-head">
+    <h2 id="kpi-head">Headline metrics</h2>
+    <div class="kpis" id="kpis" aria-live="polite">
+      <div class="kpi"><div class="label">NDCG@10, re-ranked</div><div class="value" id="k-ndcg">...</div><div class="foot">graded, four stages</div></div>
+      <div class="kpi"><div class="label">AUROC, abstention</div><div class="value" id="k-auroc">...</div><div class="foot">answerable against not</div></div>
+      <div class="kpi"><div class="label">Coverage</div><div class="value" id="k-cov">...</div><div class="foot">at the chosen threshold</div></div>
+      <div class="kpi"><div class="label">False answers</div><div class="value" id="k-far">...</div><div class="foot">unanswerable answered</div></div>
+      <div class="kpi"><div class="label">ECE</div><div class="value" id="k-ece">...</div><div class="foot">score against labels</div></div>
+      <div class="kpi"><div class="label">Unit tests</div><div class="value">271</div><div class="foot"><code>node --test</code></div></div>
+    </div>
+  </section>
+
+  <section aria-labelledby="stage-head">
+    <h2 id="stage-head">Ranking quality by stage</h2>
+    <p class="prose" style="margin-bottom:14px">
+      Lexical is BM25 alone. Dense is character trigram TF-IDF cosine alone. Fused merges the two with
+      Reciprocal Rank Fusion. Re-ranked runs personalized PageRank over the citation graph on top of
+      the fusion. Every stage ranks the whole collection, so recall is measured against the full
+      pool rather than a shortened list, which is why none of the recall columns can reach 1.0000.
+    </p>
+    <div class="tbl-scroll">
+      <table id="stage-table">
+        <thead>
+          <tr>
+            <th scope="col" class="left">Stage</th>
+            <th scope="col">MRR</th>
+            <th scope="col">NDCG@10</th>
+            <th scope="col">Recall@1</th>
+            <th scope="col">Recall@5</th>
+            <th scope="col">Recall@10</th>
+          </tr>
+        </thead>
+        <tbody id="stage-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section aria-labelledby="ood-head">
+    <h2 id="ood-head">Out of distribution abstention</h2>
+    <p class="prose" style="margin-bottom:14px">
+      Five questions in the evaluation set have no relevant document anywhere in the collection. The
+      abstention score combines evidence coverage, the agreement of the top two candidates, top
+      confidence and the out of vocabulary ratio of the question against the collection. A question
+      below the threshold is refused rather than answered from a weakly matching document.
+    </p>
+    <div class="meters" id="abstention-meters"></div>
+  </section>
+
+  <section aria-labelledby="pages-head">
+    <h2 id="pages-head">Go deeper</h2>
+    <div class="grid">
+      <a class="card" href="lab/"><h3>The retrieval lab</h3><p>Type a question, watch each stage rank the collection, and read the abstention decision with the evidence span it relied on.</p></a>
+      <a class="card" href="sweep/"><h3>The calibration sweep</h3><p>Coverage, false answer rate, accuracy, ECE and AUROC read at every threshold, and the operating characteristic of the score.</p></a>
+      <a class="card" href="https://github.com/draarivpatel-ui/citegraph-ir"><h3>Source on GitHub</h3><p>The engine, the evaluation set, the 271-test suite and the command line interface.</p></a>
+    </div>
+  </section>
+
+  <section aria-labelledby="pipe-head">
+    <h2 id="pipe-head">The pipeline</h2>
+    <div class="steps">
+      <div class="step"><div class="n"></div><div class="t"><b>Tokenize.</b> <span>Lowercase, strip accents, drop English stop words.</span></div></div>
+      <div class="step"><div class="n"></div><div class="t"><b>BM25.</b> <span>Okapi over a lexical inverted index, k1 = 1.2, b = 0.75, idf corrected by 0.5 and clamped at zero.</span></div></div>
+      <div class="step"><div class="n"></div><div class="t"><b>Dense.</b> <span>Character trigram TF-IDF vectors, cosine similarity, boundary padded n-grams.</span></div></div>
+      <div class="step"><div class="n"></div><div class="t"><b>Fuse.</b> <span>Reciprocal Rank Fusion, k = 60. Only ranks enter, so the two score scales cancel.</span></div></div>
+      <div class="step"><div class="n"></div><div class="t"><b>Re-rank.</b> <span>Personalized PageRank, damping 0.85, seeded from the fused run, dangling mass redistributed uniformly.</span></div></div>
+      <div class="step"><div class="n"></div><div class="t"><b>Abstain.</b> <span>Evidence coverage, top two agreement, top confidence and the out of vocabulary ratio, clamped to the unit interval.</span></div></div>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>MIT licensed. No dependencies, no model, no external service.</span>
+  <span>Zero dependencies. The whole workbench runs in this page.</span>
+</footer>
+
+<script type="module">
+  const $ = (id) => document.getElementById(id);
+
+  const stored = (() => { try { return localStorage.getItem("citegraph-theme"); } catch { return null; } })();
+  if (stored === "dark" || stored === "light") document.documentElement.dataset.theme = stored;
+  const toggle = $("theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = () => (document.documentElement.dataset.theme ?? (prefersDark ? "dark" : "light")) === "dark";
+  const syncToggle = () => { toggle.textContent = isDark() ? "Light mode" : "Dark mode"; };
+  toggle.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("citegraph-theme", next); } catch { /* private mode */ }
+    syncToggle();
+  });
+  syncToggle();
+  for (const link of document.querySelectorAll("[data-nav]")) {
+    if (link.getAttribute("data-nav") === document.body.dataset.page) link.setAttribute("aria-current", "page");
+  }
+
+  // Every number below is computed here, from the same modules the test suite
+  // runs. Nothing on this page is a hard-coded result.
+  let report;
+  try {
+    const { buildReport } = await import("./src/report.js");
+    report = buildReport();
+  } catch (error) {
+    const note = document.createElement("p");
+    note.className = "prose";
+    note.style.color = "var(--critical)";
+    note.textContent = "The engine could not be loaded here: " + error.message;
+    $("kpis").before(note);
+  }
+
+  if (report) {
+    const pct = (v) => (v * 100).toFixed(1) + "%";
+    $("k-ndcg").textContent = report.stages.reranked.ndcgAt10.toFixed(4);
+    $("k-auroc").textContent = report.abstention.auroc.toFixed(4);
+    $("k-cov").textContent = pct(report.recommendedThreshold.coverage);
+    $("k-far").textContent = pct(report.abstention.falseAnswerRate);
+    $("k-ece").textContent = report.abstention.ece.toFixed(4);
+
+    const stages = ["lexical", "dense", "fused", "reranked"];
+    const labels = {
+      lexical: "Lexical, BM25",
+      dense: "Dense, TF-IDF",
+      fused: "Fused, RRF",
+      reranked: "Re-ranked, PageRank"
+    };
+    const swatches = ["series-1", "series-2", "series-3", "series-4"];
+    const body = $("stage-body");
+    for (const stage of stages) {
+      const row = report.stages[stage];
+      const tr = document.createElement("tr");
+      const swatch = `<span class="swatch" style="background:var(--${swatches[stages.indexOf(stage)]})"></span>`;
+      tr.innerHTML = `<td class="left">${swatch}${labels[stage]}</td>` +
+        ["mrr", "ndcgAt10", "recallAt1", "recallAt5", "recallAt10"]
+          .map((k) => `<td>${row[k].toFixed(4)}</td>`).join("");
+      body.appendChild(tr);
+    }
+
+    const rows = [
+      ["Answerable questions answered", report.abstention.coverage],
+      ["Unanswerable questions refused", 1 - report.abstention.falseAnswerRate],
+      ["Decisions correct overall", report.abstention.accuracy]
+    ];
+    const host = $("abstention-meters");
+    for (const [name, value] of rows) {
+      const row = document.createElement("div");
+      row.className = "meter";
+      row.innerHTML =
+        `<span class="name">${name}</span><span class="num">${(value * 100).toFixed(1)}%</span>` +
+        `<span class="track"><span class="fill" style="width:${(value * 100).toFixed(1)}%"></span></span>`;
+      host.appendChild(row);
+    }
+  }
+</script>
+</body>
+</html>
