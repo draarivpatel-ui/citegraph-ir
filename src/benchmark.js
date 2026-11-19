@@ -9,7 +9,6 @@
 import { CORPUS, BODIES } from "./corpus.js";
 import {
   ANSWERABLE,
-  UNANSWERABLE,
   EVALUATION_SET,
   gradedRelevance
 } from "./evaluation_set.js";
@@ -17,13 +16,11 @@ import {
   buildIndex,
   bm25Rank,
   contentTokens,
-  tokenize,
   buildDenseVectors,
   denseRank,
   reciprocalRankFusion,
   buildCitationGraph,
   rerankWithAuthority,
-  faithfulness,
   abstentionScore,
   expectedCalibrationError,
   auroc,
