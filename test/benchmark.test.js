@@ -208,7 +208,6 @@ test("evaluateAbstention accuracy, coverage and false answer rate are consistent
 test("evaluateAbstention separates the two halves well", () => {
   const result = evaluateAbstention(engine);
   const answerableScores = result.items.filter((i) => i.answerable).map((i) => i.score);
-  const unanswerableScores = result.items.filter((i) => !i.answerable).map((i) => i.score);
   const lowestAnswerable = Math.min(...answerableScores);
   // A perfect split is not required, but the classes must not overlap wholesale.
   assert.ok(result.auroc > 0.85, `auroc ${result.auroc}`);
