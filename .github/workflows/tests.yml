@@ -8,14 +8,18 @@ on:
 
 jobs:
   node:
-    name: unit tests
+    name: unit tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
-      - run: node --test test/
+          node-version: ${{ matrix.node }}
+      - run: npm test
 
   python:
     name: command line interface

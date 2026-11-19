@@ -73,7 +73,7 @@ operating point is chosen with both facts in view.
 ## Running it
 
 ```sh
-node --test test/                     # 271 unit tests
+npm test                              # 271 unit tests
 python3 cli/eval_ir.py                # the summary table
 python3 cli/eval_ir.py --queries      # one row per evaluation query
 python3 cli/eval_ir.py --unanswerable # the abstention decisions
