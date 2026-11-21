@@ -253,7 +253,7 @@ export function gradedRelevance(query, rankedDocIds) {
   return {
     labels,
     canonical: pool[0],
-    canonicalRank: position.get(pool[0]),
+    canonicalRank: position.has(pool[0]) ? position.get(pool[0]) + 1 : null,
     pool
   };
 }

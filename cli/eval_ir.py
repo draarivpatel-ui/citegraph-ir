@@ -16,6 +16,7 @@ third-party package is needed on either side.
 
 import argparse
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -180,7 +181,12 @@ def build_parser():
     parser.add_argument("--unanswerable", action="store_true", help="the unanswerable decisions")
     parser.add_argument("--sweep", action="store_true", help="the threshold sweep")
     parser.add_argument("--roc", action="store_true", help="the operating points of the score")
-    parser.add_argument("--stage", default="reranked", help="stage to score (reranked)")
+    parser.add_argument(
+        "--stage",
+        default="reranked",
+        choices=["lexical", "dense", "fused", "reranked"],
+        help="stage to score (reranked)",
+    )
     return parser
 
 
@@ -189,6 +195,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     options = {}
     if args.threshold is not None:
+        if not math.isfinite(args.threshold) or not 0 <= args.threshold <= 1:
+            parser.error("--threshold must be a finite number in [0, 1]")
         options["threshold"] = args.threshold
     if args.stage != "reranked":
         options["stage"] = args.stage

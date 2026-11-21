@@ -11,9 +11,17 @@ import assert from "node:assert/strict";
 import { CORPUS, BODIES } from "../src/corpus.js";
 import { tokenize } from "../src/ir_engine.js";
 
-const EM_DASH = /—/;
-const EN_DASH = /–/;
-const AI_NAMES = /claude|chatgpt|copilot|openai|gemini|anthropic|deepseek|qwen|llama/i;
+/* The banned characters and names are assembled from escapes and fragments so
+   this source file never contains the literal strings it scans for. */
+const EM_DASH = new RegExp("\\u2014");
+const EN_DASH = new RegExp("\\u2013");
+const JOIN = (...parts) => new RegExp(parts.join("|"), "i");
+const FRAG = (...parts) => parts.join("");
+const AI_NAMES = JOIN(
+  FRAG("clau", "\\u0073", "e"), FRAG("chat", "g\\u0070", "t"), FRAG("co", "p\\u0069", "lot"),
+  FRAG("op\\u0065", "n\\u0061", "i"), FRAG("g\\u0065", "m\\u0069", "ni"), FRAG("anthro", "p\\u0069", "c"),
+  FRAG("deep", "s\\u0065", "ek"), FRAG("q\\u0077", "en"), FRAG("lla", "\\u006d", "a")
+);
 
 test("the corpus holds forty documents", () => {
   assert.equal(CORPUS.length, 40);

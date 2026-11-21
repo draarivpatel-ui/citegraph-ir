@@ -3,15 +3,49 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-pqEYKOQNrFyPU0Y8kjeKLspq5n8eWn4twCarwXjDgLI='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
 <title>CiteGraph-IR Lab</title>
-<meta name="description" content="Type a question and watch every stage of the CiteGraph-IR retrieval pipeline rank the bundled 40-document citation collection.">
+<meta name="description" content="Type a question and watch every stage of the CiteGraph-IR retrieval pipeline rank the bundled 40-document citation collection, with an adjustable abstention threshold and an evidence attribution ledger.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <link rel="stylesheet" href="../shell.css">
+<style>
+  /* Lab only: the control rail, the score cells and the attribution ledger.
+     Chrome lives in shell.css so all three pages stay one surface. */
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  .control { display: grid; gap: 6px; }
+  .control label { font-size: 12px; color: var(--text-secondary); }
+  .control output { font-family: var(--mono); font-size: 12px; color: var(--text-primary); }
+  .control input[type="range"], .control select { width: 100%; font: inherit; }
+  .control select { font-size: 13px; color: var(--text-primary); background: var(--surface-0); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 6px 9px; }
+  .control input[type="range"]:focus-visible, .control select:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .verdict-body { display: grid; gap: 8px; flex: 1 1 320px; }
+  .signal-row { display: flex; gap: 18px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--text-secondary); }
+  .signal-row b { color: var(--text-primary); font-weight: 600; }
+
+  td.score { font-family: var(--mono); color: var(--text-secondary); }
+  td.climb { color: var(--good); }
+  td.drop { color: var(--critical); }
+  .ledger { display: grid; gap: 12px; }
+  .ledger-doc { border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; background: var(--surface-0); }
+  .ledger-head { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; justify-content: space-between; font-size: 13px; }
+  .ledger-head b { font-weight: 600; }
+  .ledger-head .mono { font-size: 12px; color: var(--text-secondary); }
+  .terms { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 9px; }
+  .term { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 5px; border: 1px solid var(--rule-strong); background: var(--surface-2); }
+  .term.missing { border-color: var(--critical); color: var(--critical); background: transparent; }
+  .term.consensus { border-color: var(--good); color: var(--good); }
+  .ledger-sentence { font-size: 12px; color: var(--text-secondary); margin: 9px 0 0; white-space: pre-wrap; }
+  .ledger-sentence b { color: var(--text-primary); font-weight: 600; }
+  .note-strip { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); margin: 0 0 12px; }
+</style>
 </head>
 <body data-page="lab">
 <header class="top">
   <a class="brand" href="../index.html">CiteGraph-IR</a>
   <nav class="nav" aria-label="Pages">
     <a href="../sweep/" data-nav="sweep">Calibration sweep</a>
+    <a href="../index.html" data-nav="home">Summary</a>
   </nav>
   <button class="theme-toggle" id="theme" type="button">Dark mode</button>
 </header>
@@ -20,7 +54,8 @@
   <h1>The retrieval lab</h1>
   <p class="lede">
     Every stage runs in this page from the same modules the test suite runs. Type a question, or
-    pick one from the evaluation set, and read the whole collection ranked four ways.
+    pick one from the evaluation set, then read the whole collection ranked four ways. The threshold,
+    evidence depth and stage scoring controls all recompute the run in the tab.
   </p>
 
   <section class="panel">
@@ -28,7 +63,7 @@
       <label class="ask-label" for="query">A question about the collection</label>
       <div class="ask-row">
         <input id="query" name="query" type="search" autocomplete="off" spellcheck="false"
-               placeholder="which weighting scheme needs no explicit length normalisation" required>
+               placeholder="how does the personalised variant replace the teleport vector" required>
         <button type="submit">Run</button>
       </div>
       <p class="hint" id="hint">
@@ -38,17 +73,47 @@
     </form>
 
     <div class="chips" role="group" aria-label="Example questions">
-      <button class="chip" type="button" data-q="which weighting scheme needs no explicit document length normalisation because the query likelihood model normalises over length">length normalisation</button>
+      <button class="chip" type="button" data-q="how does the personalised variant replace the teleport vector with a seed distribution over retrieved documents">PageRank</button>
       <button class="chip" type="button" data-q="how does the hierarchical navigable small world index trade a small amount of recall for fast search">vector search</button>
-      <button class="chip" data-q="how does the personalised variant replace the teleport vector with a seed distribution over retrieved documents" type="button">PageRank</button>
+      <button class="chip" type="button" data-q="which weighting scheme needs no explicit document length normalisation because the query likelihood model normalises over length">length normalisation</button>
       <button class="chip" type="button" data-q="who won the 1998 football world cup final">out of collection</button>
+    </div>
+
+    <div class="controls" role="group" aria-label="Retrieval controls">
+      <div class="control">
+        <label for="threshold">Abstention threshold</label>
+        <input id="threshold" type="range" min="0" max="0.6" step="0.01" value="0.1">
+        <output id="threshold-out" for="threshold">0.10, answer at or above</output>
+      </div>
+      <div class="control">
+        <label for="top-n">Rows shown per stage</label>
+        <input id="top-n" type="range" min="5" max="40" step="1" value="12">
+        <output id="top-n-out" for="top-n">12 of 40 documents</output>
+      </div>
+      <div class="control">
+        <label for="score-view">Score column</label>
+        <select id="score-view">
+          <option value="ranks">Stage ranks</option>
+          <option value="scores">Stage scores</option>
+          <option value="delta">Rank change, lexical to re-ranked</option>
+        </select>
+      </div>
+      <div class="control">
+        <label for="evidence-depth">Evidence documents</label>
+        <input id="evidence-depth" type="range" min="1" max="6" step="1" value="3">
+        <output id="evidence-depth-out" for="evidence-depth">3 documents attributed</output>
+      </div>
     </div>
   </section>
 
-  <section class="verdict" id="verdict" hidden>
+  <section class="verdict panel" id="verdict" hidden>
     <div class="verdict-head">
       <span class="badge" id="verdict-badge">ANSWER</span>
       <span class="verdict-score">abstention score <b id="score-out">0.0000</b></span>
+    </div>
+    <div class="verdict-body">
+      <p class="verdict-text" id="verdict-text"></p>
+      <div class="signal-row" id="signal-row"></div>
     </div>
   </section>
 
@@ -62,11 +127,12 @@
         <span class="legend-item"><span class="swatch" style="background:var(--series-4)"></span>Re-ranked</span>
       </div>
     </div>
+    <p class="note-strip" id="rank-note"></p>
     <p class="empty" id="empty">Nothing run yet. The table fills once a question is scored.</p>
-    <div class="tbl-scroll" hidden>
+    <div class="tbl-scroll" id="runs-scroll" hidden>
       <table id="runs">
         <thead>
-          <tr>
+          <tr id="runs-head">
             <th scope="col">Rank</th>
             <th scope="col">Document</th>
             <th scope="col">BM25</th>
@@ -78,6 +144,12 @@
         <tbody id="runs-body"></tbody>
       </table>
     </div>
+  </section>
+
+  <section class="panel" id="attribution-panel" hidden>
+    <div class="panel-head"><h2>Evidence attribution ledger</h2></div>
+    <p class="note-strip" id="attribution-note"></p>
+    <div class="ledger" id="attribution-ledger"></div>
   </section>
 
   <section class="panel" id="evidence-panel" hidden>
@@ -116,39 +188,169 @@
   /* ---- engine ------------------------------------------------------ */
   const { buildEngine, runQuery } = await import("../src/benchmark.js");
   const ir = await import("../src/ir_engine.js");
+  const provenance = await import("../src/provenance.js");
   const { CORPUS } = await import("../src/corpus.js");
   const engine = buildEngine();
   const TITLES = new Map(CORPUS.map((d) => [d.id, d.title]));
   const STAGES = ["lexical", "dense", "fused", "reranked"];
-  const TOP_N = 12;
+  const STAGE_LABELS = ["BM25", "TF-IDF", "RRF", "PageRank"];
 
-  const form = document.getElementById("ask");
-  const input = document.getElementById("query");
-  const hint = document.getElementById("hint");
-  const verdict = document.getElementById("verdict");
-  const badge = document.getElementById("verdict-badge");
-  const scoreOut = document.getElementById("score-out");
-  const table = document.querySelector(".tbl-scroll");
-  const body = document.getElementById("runs-body");
-  const empty = document.getElementById("empty");
-  const legend = document.getElementById("legend");
-  const evidencePanel = document.getElementById("evidence-panel");
-  const evidenceSpan = document.getElementById("evidence-span");
-  const evidenceNote = document.getElementById("evidence-note");
+  const $ = (id) => document.getElementById(id);
+  const form = $("ask");
+  const input = $("query");
+  const hint = $("hint");
+  const verdict = $("verdict");
+  const badge = $("verdict-badge");
+  const scoreOut = $("score-out");
+  const verdictText = $("verdict-text");
+  const signalRow = $("signal-row");
+  const tableScroll = $("runs-scroll");
+  const head = $("runs-head");
+  const body = $("runs-body");
+  const empty = $("empty");
+  const legend = $("legend");
+  const rankNote = $("rank-note");
+  const attributionPanel = $("attribution-panel");
+  const attributionLedger = $("attribution-ledger");
+  const attributionNote = $("attribution-note");
+  const evidencePanel = $("evidence-panel");
+  const evidenceSpan = $("evidence-span");
+  const evidenceNote = $("evidence-note");
 
-  const fmt = (n) => (Number.isFinite(n) ? n.toFixed(4) : "0.0000");
+  const threshold = $("threshold");
+  const topN = $("top-n");
+  const scoreView = $("score-view");
+  const evidenceDepth = $("evidence-depth");
+  const outputs = {
+    threshold: $("threshold-out"),
+    topN: $("top-n-out"),
+    evidenceDepth: $("evidence-depth-out")
+  };
 
-  async function present(text) {
-    // One run per stage over the whole collection, in the order the pipeline runs.
+  const fmt = (n, digits = 4) => (Number.isFinite(n) ? n.toFixed(digits) : "0.0000");
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+  let last = null;
+
+  function syncControls() {
+    outputs.threshold.textContent = `${Number(threshold.value).toFixed(2)}, answer at or above`;
+    outputs.topN.textContent = `${topN.value} of ${CORPUS.length} documents`;
+    outputs.evidenceDepth.textContent = `${evidenceDepth.value} document${evidenceDepth.value === "1" ? "" : "s"} attributed`;
+  }
+
+  function renderHead() {
+    const view = scoreView.value;
+    const labels = view === "scores" ? STAGE_LABELS.map((s) => `${s} score`)
+      : view === "delta" ? ["Lexical", "Re-ranked", "Change"] : STAGE_LABELS;
+    const cells = ["Rank", "Document", ...labels];
+    head.innerHTML = cells.map((label, i) => `<th scope="col"${i === 1 ? ' class="left"' : ""}>${escapeHtml(label)}</th>`).join("");
+  }
+
+  function renderTable() {
+    const { runs, comparison } = last;
+    const view = scoreView.value;
+    const limit = Number(topN.value);
+    const byId = new Map();
+    for (const stage of STAGES) {
+      for (const entry of runs[stage]) {
+        if (!byId.has(entry.id)) byId.set(entry.id, {});
+        byId.get(entry.id)[stage] = entry;
+      }
+    }
+    const order = runs.reranked.slice(0, limit);
+    body.innerHTML = "";
+    for (const entry of order) {
+      const row = byId.get(entry.id);
+      const cells = [String(entry.rank), escapeHtml(TITLES.get(entry.id) ?? entry.id)];
+      if (view === "scores") {
+        for (const stage of STAGES) cells.push(`<td class="score">${fmt(row[stage]?.score ?? 0)}</td>`);
+      } else if (view === "delta") {
+        const before = row.lexical?.rank ?? null;
+        const after = row.reranked?.rank ?? null;
+        const delta = before !== null && after !== null ? before - after : 0;
+        const tone = delta > 0 ? "climb" : delta < 0 ? "drop" : "";
+        cells.push(String(before ?? "n/a"), String(after ?? "n/a"),
+          `<td class="score ${tone}">${delta > 0 ? "+" : ""}${delta}</td>`);
+      } else {
+        for (const stage of STAGES) cells.push(String(row[stage]?.rank ?? "n/a"));
+      }
+      let html = `<td>${cells[0]}</td><td class="doc">${cells[1]}</td>`;
+      for (let i = 2; i < cells.length; i += 1) {
+        html += cells[i].startsWith("<td") ? cells[i] : `<td>${cells[i]}</td>`;
+      }
+      const tr = document.createElement("tr");
+      tr.innerHTML = html;
+      body.appendChild(tr);
+    }
+    rankNote.textContent =
+      `${comparison.changedCount} of ${CORPUS.length} documents changed rank from lexical to ` +
+      `re-ranked. Biggest climb ${comparison.maxClimb} places, biggest drop ${comparison.maxDrop} ` +
+      `places, normalized rank agreement ${fmt(comparison.spearman)}.`;
+  }
+
+  function renderAttribution() {
+    const { attribution } = last;
+    attributionLedger.innerHTML = "";
+    attributionNote.textContent =
+      `Top document covers ${fmt(attribution.topCoverage)} of the idf weighted claim terms. ` +
+      `Independent second opinion ${fmt(attribution.secondCoverage)}, agreement ${fmt(attribution.agreement)}. ` +
+      `${attribution.consensusTerms.length} term${attribution.consensusTerms.length === 1 ? "" : "s"} supported by two or more documents.`;
+    const consensus = new Set(attribution.consensusTerms);
+    for (const doc of attribution.perDocument) {
+      const card = document.createElement("div");
+      card.className = "ledger-doc";
+      const terms = doc.terms.map((row) => {
+        const tone = row.covered ? (consensus.has(row.term) ? "consensus" : "") : "missing";
+        const title = row.covered ? `weight ${fmt(row.weight, 2)}` : `uncovered, weight ${fmt(row.weight, 2)}`;
+        return `<span class="term ${tone}" title="${title}">${escapeHtml(row.term)}</span>`;
+      }).join("");
+      const span = doc.spans[0]
+        ? `<p class="ledger-sentence"><b>Strongest span</b> (${fmt(doc.spans[0].score, 2)}): ${escapeHtml(doc.spans[0].sentence)}</p>`
+        : "";
+      card.innerHTML =
+        `<div class="ledger-head"><b>${escapeHtml(TITLES.get(doc.docId) ?? doc.docId)}</b>` +
+        `<span class="mono">rank ${doc.rank}, coverage ${fmt(doc.coverage)}, ${doc.sentenceCount} sentences</span></div>` +
+        `<div class="terms">${terms}</div>${span}`;
+      attributionLedger.appendChild(card);
+    }
+  }
+
+  function present(text) {
     const runs = {};
     for (const stage of STAGES) runs[stage] = runQuery(engine, text, stage);
-    const score = ir.abstentionScore(runs.fused, text, engine.bodiesById);
-    const answer = ir.shouldAnswer(score);
-    scoreOut.textContent = fmt(score);
+    // Score the re-ranked run with the same idf and vocabulary statistics the
+    // benchmark uses, so the verdict here is the decision the dashboard reports.
+    const score = ir.abstentionScore(runs.reranked, text, engine.bodiesById, {
+      idf: engine.index.idf,
+      docFrequency: engine.index.docFrequency
+    });
+    const cut = Number(threshold.value);
+    const answer = ir.shouldAnswer(score, cut);
+    const comparison = provenance.compareRuns(runs.lexical, runs.reranked);
+    const attribution = provenance.attributeRunEvidence(
+      runs.reranked, text, engine.bodiesById, engine.index.idf,
+      { topN: Number(evidenceDepth.value) }
+    );
+    const fingerprint = provenance.queryFingerprint(text);
+    last = { runs, score, answer, comparison, attribution, fingerprint, text };
 
+    syncControls();
+    scoreOut.textContent = fmt(score);
     verdict.hidden = false;
     badge.textContent = answer ? "ANSWER" : "ABSTAIN";
     badge.className = "badge " + (answer ? "badge-good" : "badge-muted");
+    verdictText.textContent = answer
+      ? "The score clears the threshold, so the leading document is offered as evidence. The ledger below names every claim term the top documents did and did not support."
+      : "The score sits below the threshold, so the question is reported as out of collection rather than answered from a weakly matching document.";
+    signalRow.innerHTML =
+      `<span>threshold <b>${cut.toFixed(2)}</b></span>` +
+      `<span>vocabulary coverage <b>${fmt(1 - (ir.oovRatio(text, engine.index.docFrequency)))}</b></span>` +
+      `<span>top confidence <b>${fmt(ir.topConfidence(runs.reranked))}</b></span>` +
+      `<span>claim terms <b>${fingerprint.termCount}</b></span>` +
+      `<span>fingerprint <b>${fingerprint.hash}</b></span>`;
+
     const top = runs.reranked[0];
     evidencePanel.hidden = false;
     if (answer && top) {
@@ -160,35 +362,19 @@
     } else {
       evidenceSpan.textContent = "Refused, so no span is offered.";
       evidenceNote.textContent =
-        "The score sits below the default threshold of 0.1, so the question is reported as out of " +
+        `The score sits below the threshold of ${cut.toFixed(2)}, so the question is reported as out of ` +
         "collection rather than answered from a weakly matching document.";
     }
 
     empty.hidden = true;
-    table.hidden = false;
+    tableScroll.hidden = false;
     legend.hidden = false;
-    body.innerHTML = "";
+    attributionPanel.hidden = false;
+    renderHead();
+    renderTable();
+    renderAttribution();
 
-    const byId = new Map();
-    for (const stage of STAGES) {
-      for (const entry of runs[stage]) {
-        if (!byId.has(entry.id)) byId.set(entry.id, { ranks: {} });
-        byId.get(entry.id).ranks[stage] = entry.rank;
-      }
-    }
-
-    // Rank order follows the re-ranked run, the last stage of the pipeline.
-    const order = runs.reranked.slice(0, TOP_N);
-    for (const entry of order) {
-      const row = byId.get(entry.id);
-      const tr = document.createElement("tr");
-      const cells = [entry.rank, TITLES.get(entry.id) ?? entry.id];
-      for (const stage of STAGES) cells.push(String(row.ranks[stage]));
-      tr.innerHTML = cells.map((c, i) => (i === 1 ? `<td class="doc">${c}</td>` : `<td>${c}</td>`)).join("");
-      body.appendChild(tr);
-    }
-
-    hint.textContent = `Top answer: "${TITLES.get(order[0].id) ?? order[0].id}". Ranks are positions in the whole collection of ${CORPUS.length} documents, so a rank of 20 is a real position, not a truncated list.`;
+    hint.textContent = `Top answer: "${TITLES.get(top?.id) ?? top?.id}". Ranks are positions in the whole collection of ${CORPUS.length} documents, so a rank of 20 is a real position, not a truncated list.`;
   }
 
   form.addEventListener("submit", (event) => {
@@ -203,6 +389,27 @@
       present(chip.dataset.q);
       input.focus();
     });
+  }
+
+  // Controls that change only the presentation rerender cheaply; a threshold
+  // change changes the decision, so it reruns the full pipeline.
+  for (const [id, handler] of [
+    ["threshold", () => { syncControls(); if (last) present(last.text); }],
+    ["top-n", () => { syncControls(); if (last) renderTable(); }],
+    ["score-view", () => { if (last) { renderHead(); renderTable(); } }],
+    ["evidence-depth", () => {
+      syncControls();
+      if (last) {
+        last.attribution = provenance.attributeRunEvidence(
+          last.runs.reranked, last.text, engine.bodiesById, engine.index.idf,
+          { topN: Number(evidenceDepth.value) }
+        );
+        renderAttribution();
+      }
+    }]
+  ]) {
+    $(id).addEventListener("input", handler);
+    $(id).addEventListener("change", handler);
   }
 
   // Open on a run rather than an empty state, so the four stages are visible

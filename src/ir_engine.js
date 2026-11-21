@@ -75,7 +75,7 @@ export function uniqueTerms(tokens) {
  * n-grams at their edges. n is clamped to [2, 4].
  */
 export function charNGrams(text, n = 3) {
-  const size = Math.max(2, Math.min(4, Math.floor(n) || 3));
+  const size = Math.max(2, Math.min(4, Number.isFinite(n) ? Math.floor(n) : 3));
   const tokens = tokenize(text);
   const grams = [];
   for (const token of tokens) {
@@ -333,7 +333,7 @@ export function buildCitationGraph(index) {
     inLinks.set(id, []);
   }
   for (const doc of index.docs) {
-    for (const ref of doc.refs) {
+    for (const ref of new Set(doc.refs)) {
       if (!ids.has(ref)) continue;
       outLinks.get(doc.id).push(ref);
       inLinks.get(ref).push(doc.id);
@@ -357,7 +357,13 @@ export function personalizedPageRank(graph, seed, options = {}) {
 
   const ids = [...graph.ids];
   let totalSeed = 0;
-  for (const id of ids) totalSeed += seed.get?.(id) ?? seed[id] ?? 0;
+  for (const id of ids) {
+    const mass = seed.get?.(id) ?? seed[id] ?? 0;
+    if (!(typeof mass === "number") || !Number.isFinite(mass) || mass < 0) {
+      throw new RangeError("seed must not contain negative or non-finite mass");
+    }
+    totalSeed += mass;
+  }
   if (totalSeed <= 0) {
     throw new RangeError("seed must have positive mass");
   }
@@ -472,7 +478,23 @@ export function rerankWithAuthority(fusedRun, graph, index, options = {}) {
  */
 export function splitSentences(text) {
   if (typeof text !== "string" || text.length === 0) return [];
-  const parts = text.split(/(?<=[.!?])\s+/);
+  const abbreviations = new Set([
+    "et al", "e.g", "i.e", "cf", "vs", "viz", "ca", "approx", "dr", "mr", "mrs",
+    "ms", "prof", "st", "fig", "figs", "eq", "eqs", "no", "vol", "pp", "sec",
+    "al", "u.s", "u.k", "u.n", "d.c", "ph.d", "m.d",
+  ]);
+  const parts = [];
+  let start = 0;
+  for (const match of text.matchAll(/[.!?]\s+/g)) {
+    const fragment = text.slice(start, match.index + 1);
+    // A break inside an abbreviation such as "et al." is not a sentence end:
+    // skip it when the fragment's last word is on the abbreviation list.
+    const tail = fragment.trimEnd().split(/\s+/).pop().slice(0, -1);
+    if (abbreviations.has(tail.toLowerCase())) continue;
+    parts.push(fragment);
+    start = match.index + match[0].length;
+  }
+  parts.push(text.slice(start));
   const out = [];
   for (const part of parts) {
     const trimmed = part.trim();
@@ -528,7 +550,7 @@ export function faithfulness(claim, documentBody, options = {}) {
   const mean = top.reduce((sum, s) => sum + s.score, 0) / (top.length || 1);
   return {
     score: Math.max(0, Math.min(1, mean)),
-    span: scored[0].sentence,
+    span: scored[0].score > 0 ? scored[0].sentence : null,
     all: scored
   };
 }
@@ -647,7 +669,7 @@ export function shouldAnswer(score, threshold = DEFAULT_ABSTAIN_THRESHOLD) {
  * confidence and observed accuracy, weighted by its share of the items.
  */
 export function expectedCalibrationError(items, bins = 15) {
-  const binCount = Math.max(1, Math.floor(bins));
+  const binCount = Math.max(1, Math.min(1024, Math.floor(bins) || 1));
   const width = 1 / binCount;
   const correct = new Array(binCount).fill(0);
   const counts = new Array(binCount).fill(0);
@@ -665,7 +687,7 @@ export function expectedCalibrationError(items, bins = 15) {
     confidence[idx] += value;
     correct[idx] += answerable === true ? 1 : 0;
   }
-  const total = items.length;
+  const total = counts.reduce((sum, c) => sum + c, 0);
   if (total === 0) return 0;
   let ece = 0;
   for (let i = 0; i < binCount; i += 1) {
@@ -778,7 +800,8 @@ export function reciprocalRankOfDoc(rankedIds, docId) {
  * gain is 2^level - 1, the discount is 1 / log2(rank + 1).
  */
 export function ndcgAtK(labels, k) {
-  const cutoff = Math.max(1, Math.min(k, labels.length));
+  const cutoff = Math.max(0, Math.min(Number.isFinite(k) ? Math.floor(k) : 0, labels.length));
+  if (cutoff === 0) return 0;
   let dcg = 0;
   for (let i = 0; i < cutoff; i += 1) {
     const gain = Math.pow(2, labels[i] ?? 0) - 1;

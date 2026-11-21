@@ -134,11 +134,9 @@ test("ndcgAtK stops at the cutoff", () => {
   assert.equal(short, withExtraZeros);
 });
 
-test("ndcgAtK clamps a cutoff below one up to one", () => {
-  const clamped = ndcgAtK([3, 2], 0);
-  const one = ndcgAtK([3, 2], 1);
-  assert.equal(clamped, one);
-  assert.ok(Math.abs(one - 1) < 1e-12);
+test("ndcgAtK returns zero for a cutoff at or below zero", () => {
+  assert.equal(ndcgAtK([3, 2], 0), 0);
+  assert.equal(ndcgAtK([3, 2], -2), 0);
 });
 
 test("ndcgAtK stops at the label list end for a cutoff past it", () => {

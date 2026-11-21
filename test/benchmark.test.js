@@ -95,7 +95,7 @@ test("queryMetrics reports the canonical rank of the query it was given", () => 
   const ids = runQuery(engine, query.text, "reranked").map((r) => r.id);
   const metrics = queryMetrics(query, ids);
   assert.equal(metrics.queryId, query.id);
-  assert.equal(metrics.canonicalRank, ids.indexOf(query.relevant[0]));
+  assert.equal(metrics.canonicalRank, ids.indexOf(query.relevant[0]) + 1);
   assert.ok(metrics.mrr > 0 && metrics.mrr <= 1);
 });
 
@@ -106,9 +106,9 @@ test("queryMetrics recall is the fraction of the pool inside the top k", () => {
   assert.equal(metrics.recallAt5, 1);
   assert.equal(metrics.recallAt10, 1);
   assert.equal(metrics.mrr, 1);
-  // The canonical sits at index one, behind the other pool member.
+  // The canonical sits at rank two, behind the other pool member.
   assert.equal(metrics.canonRr, 0.5);
-  assert.equal(metrics.canonicalRank, 1);
+  assert.equal(metrics.canonicalRank, 2);
 });
 
 test("queryMetrics of a run with no pool gives zeros", () => {
@@ -116,7 +116,7 @@ test("queryMetrics of a run with no pool gives zeros", () => {
   assert.equal(metrics.mrr, 0);
   assert.equal(metrics.canonRr, 0);
   assert.equal(metrics.ndcgAt10, 0);
-  assert.equal(metrics.canonicalRank, undefined);
+  assert.equal(metrics.canonicalRank, null);
   assert.equal(metrics.canonical, undefined);
   // An empty pool has no recall to report, and recallAtK says so with null
   // rather than pretending the run retrieved nothing.

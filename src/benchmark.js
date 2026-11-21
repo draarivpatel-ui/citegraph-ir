@@ -34,6 +34,7 @@ import {
   reciprocalRankOfDoc,
   DEFAULT_ABSTAIN_THRESHOLD
 } from "./ir_engine.js";
+import { compareRuns } from "./provenance.js";
 
 /** The documents with their bodies attached, in corpus order. */
 export function loadDocuments() {
@@ -277,6 +278,66 @@ export function runBenchmark(options = {}) {
     abstention,
     options
   };
+}
+
+/**
+ * How much each pipeline stage actually moves the ranking, aggregated over the
+ * answerable queries. This is what the stage table cannot show: two stages can
+ * post the same MRR while producing completely different orderings. The
+ * transitions are lexical to fused (what fusion costs and buys), fused to
+ * re-ranked (what citation authority changes), and lexical to re-ranked (the
+ * total end to end movement).
+ *
+ * Every field is an average over queries, so the result is a property of the
+ * pipeline and the evaluation set rather than of one cherry picked question.
+ */
+export function diagnoseStageMovement(report, options = {}) {
+  const transitions = options.transitions ?? [
+    ["lexical", "fused"],
+    ["fused", "reranked"],
+    ["lexical", "reranked"]
+  ];
+  const perQuery = [];
+  const summary = {};
+
+  for (const [from, to] of transitions) {
+    const key = `${from}_to_${to}`;
+    const beforeRuns = report.stages[from]?.runs ?? [];
+    const afterRuns = report.stages[to]?.runs ?? [];
+    let changed = 0;
+    let maxClimb = 0;
+    let maxDrop = 0;
+    let agreement = 0;
+    let topStable = 0;
+    const count = Math.min(beforeRuns.length, afterRuns.length);
+    for (let i = 0; i < count; i += 1) {
+      const comparison = compareRuns(beforeRuns[i], afterRuns[i]);
+      changed += comparison.changedCount;
+      maxClimb += comparison.maxClimb;
+      maxDrop += comparison.maxDrop;
+      agreement += comparison.spearman;
+      if (beforeRuns[i][0]?.id === afterRuns[i][0]?.id) topStable += 1;
+      perQuery.push({
+        queryId: report.stages[from].perQuery[i]?.queryId ?? null,
+        transition: key,
+        changedCount: comparison.changedCount,
+        maxClimb: comparison.maxClimb,
+        maxDrop: comparison.maxDrop,
+        agreement: Number(comparison.spearman.toFixed(4))
+      });
+    }
+    summary[key] = {
+      from,
+      to,
+      queryCount: count,
+      meanChangedDocuments: count ? round(changed / count, 2) : 0,
+      meanMaxClimb: count ? round(maxClimb / count, 2) : 0,
+      meanMaxDrop: count ? round(maxDrop / count, 2) : 0,
+      meanRankAgreement: count ? round(agreement / count, 4) : 0,
+      topStableFraction: count ? round(topStable / count, 4) : 0
+    };
+  }
+  return { summary, perQuery };
 }
 
 /** A serializable summary, safe to send to a dashboard or to print. */

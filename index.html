@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-nETISi0YccDn6dxBQWuVihMLOIGjTVsZE0imbMwg5mU='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
 <title>CiteGraph-IR</title>
 <meta name="description" content="A zero-dependency hybrid retrieval and out of distribution abstention benchmark workbench over a 40-document scientific citation collection.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="shell.css">
 <style>
   /* Hub page only: the KPI row and the pipeline list. Everything chrome-like
@@ -40,6 +42,20 @@
   .step .t span { color: var(--text-secondary); }
 
   .prose p { font-size: 14px; color: var(--text-secondary); margin: 0 0 14px; max-width: 70ch; }
+
+  /* Upgrade: the stage movement strip and the evidence ledger preview. */
+  .moves { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .move { background: var(--surface-1); padding: 15px 17px 17px; }
+  .move .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
+  .move .value { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; }
+  .move .foot { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+  .ledger-lines { display: grid; gap: 8px; max-width: 720px; }
+  .ledger-line { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 13px; }
+  .ledger-line .name { color: var(--text-secondary); }
+  .ledger-line .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .ledger-line .track { grid-column: 1 / -1; height: 6px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+  .ledger-line .fill { height: 100%; background: var(--series-3); }
+  .theme-toggle:focus-visible, .card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body data-page="home">
@@ -67,12 +83,12 @@
   <section aria-labelledby="kpi-head">
     <h2 id="kpi-head">Headline metrics</h2>
     <div class="kpis" id="kpis" aria-live="polite">
-      <div class="kpi"><div class="label">NDCG@10, re-ranked</div><div class="value" id="k-ndcg">...</div><div class="foot">graded, four stages</div></div>
+      <div class="kpi"><div class="label">NDCG at 10, re-ranked</div><div class="value" id="k-ndcg">...</div><div class="foot">graded, four stages</div></div>
       <div class="kpi"><div class="label">AUROC, abstention</div><div class="value" id="k-auroc">...</div><div class="foot">answerable against not</div></div>
       <div class="kpi"><div class="label">Coverage</div><div class="value" id="k-cov">...</div><div class="foot">at the chosen threshold</div></div>
       <div class="kpi"><div class="label">False answers</div><div class="value" id="k-far">...</div><div class="foot">unanswerable answered</div></div>
       <div class="kpi"><div class="label">ECE</div><div class="value" id="k-ece">...</div><div class="foot">score against labels</div></div>
-      <div class="kpi"><div class="label">Unit tests</div><div class="value">271</div><div class="foot"><code>node --test</code></div></div>
+      <div class="kpi"><div class="label">Evaluation queries</div><div class="value" id="k-tests">...</div><div class="foot">answerable and refused</div></div>
     </div>
   </section>
 
@@ -101,6 +117,16 @@
     </div>
   </section>
 
+  <section aria-labelledby="move-head">
+    <h2 id="move-head">What each stage actually changes</h2>
+    <p class="prose" style="margin-bottom:14px">
+      Two stages can post the same MRR while producing very different orderings. These readouts count
+      the documents that changed position, averaged over all answerable questions, so the fusion and
+      the citation re-rank are visible as operations rather than as a single headline number.
+    </p>
+    <div class="moves" id="stage-moves" aria-live="polite"></div>
+  </section>
+
   <section aria-labelledby="ood-head">
     <h2 id="ood-head">Out of distribution abstention</h2>
     <p class="prose" style="margin-bottom:14px">
@@ -112,12 +138,23 @@
     <div class="meters" id="abstention-meters"></div>
   </section>
 
+  <section aria-labelledby="attribution-head">
+    <h2 id="attribution-head">How much of each question the evidence supports</h2>
+    <p class="prose" style="margin-bottom:14px">
+      The attribution ledger attributes every distinct claim term to a sentence in the top
+      documents, weighted by its idf. These are the mean top document coverage, the independent
+      second opinion and their agreement across all answerable questions. The lab shows the term by
+      term ledger for any question you type.
+    </p>
+    <div class="ledger-lines" id="attribution-lines" aria-live="polite"></div>
+  </section>
+
   <section aria-labelledby="pages-head">
     <h2 id="pages-head">Go deeper</h2>
     <div class="grid">
       <a class="card" href="lab/"><h3>The retrieval lab</h3><p>Type a question, watch each stage rank the collection, and read the abstention decision with the evidence span it relied on.</p></a>
       <a class="card" href="sweep/"><h3>The calibration sweep</h3><p>Coverage, false answer rate, accuracy, ECE and AUROC read at every threshold, and the operating characteristic of the score.</p></a>
-      <a class="card" href="https://github.com/draarivpatel-ui/citegraph-ir"><h3>Source on GitHub</h3><p>The engine, the evaluation set, the 271-test suite and the command line interface.</p></a>
+      <a class="card" href="https://github.com/draarivpatel-ui/citegraph-ir"><h3>Source on GitHub</h3><p>The engine, the evaluation set, the regression suite and the command line interface.</p></a>
     </div>
   </section>
 
@@ -180,6 +217,7 @@
     $("k-cov").textContent = pct(report.recommendedThreshold.coverage);
     $("k-far").textContent = pct(report.abstention.falseAnswerRate);
     $("k-ece").textContent = report.abstention.ece.toFixed(4);
+    $("k-tests").textContent = String(report.evaluationQueries);
 
     const stages = ["lexical", "dense", "fused", "reranked"];
     const labels = {
@@ -213,6 +251,39 @@
         `<span class="name">${name}</span><span class="num">${(value * 100).toFixed(1)}%</span>` +
         `<span class="track"><span class="fill" style="width:${(value * 100).toFixed(1)}%"></span></span>`;
       host.appendChild(row);
+    }
+
+    const moves = [
+      ["lexical_to_fused", "Fusion", "documents moved, lexical to fused"],
+      ["fused_to_reranked", "Citation re-rank", "documents moved, fused to re-ranked"],
+      ["lexical_to_reranked", "End to end", "documents moved, lexical to re-ranked"]
+    ];
+    const moveHost = $("stage-moves");
+    for (const [key, label, foot] of moves) {
+      const entry = report.stageMovement.summary[key];
+      const card = document.createElement("div");
+      card.className = "move";
+      card.innerHTML =
+        `<div class="label">${label}</div>` +
+        `<div class="value">${entry.meanChangedDocuments.toFixed(1)}</div>` +
+        `<div class="foot">${foot}, rank agreement ${entry.meanRankAgreement.toFixed(3)}</div>`;
+      moveHost.appendChild(card);
+    }
+
+    const mean = (key) => report.perQuery.reduce((sum, row) => sum + (row.attribution?.[key] ?? 0), 0) / report.perQuery.length;
+    const attributionRows = [
+      ["Mean top document coverage", mean("topCoverage")],
+      ["Mean independent second opinion", report.perQuery.reduce((sum, row) => sum + (row.attribution?.documents?.[1]?.coverage ?? 0), 0) / report.perQuery.length],
+      ["Mean top two agreement", mean("agreement")]
+    ];
+    const attributionHost = $("attribution-lines");
+    for (const [name, value] of attributionRows) {
+      const line = document.createElement("div");
+      line.className = "ledger-line";
+      line.innerHTML =
+        `<span class="name">${name}</span><span class="num">${(value * 100).toFixed(1)}%</span>` +
+        `<span class="track"><span class="fill" style="width:${(value * 100).toFixed(1)}%"></span></span>`;
+      attributionHost.appendChild(line);
     }
   }
 </script>

@@ -120,21 +120,21 @@ test("gradedRelevance labels follow the ranked order, not the pool order", () =>
 test("gradedRelevance of an empty run gives no labels", () => {
   const query = { relevant: ["a"] };
   assert.deepEqual(gradedRelevance(query, []).labels, []);
-  assert.equal(gradedRelevance(query, []).canonicalRank, undefined);
+  assert.equal(gradedRelevance(query, []).canonicalRank, null);
 });
 
-test("gradedRelevance reports the canonical rank as a zero based index", () => {
+test("gradedRelevance reports the canonical rank as a one based rank", () => {
   const query = { relevant: ["a", "b"] };
   const first = gradedRelevance(query, ["a", "b"]);
   const second = gradedRelevance(query, ["b", "a"]);
-  assert.equal(first.canonicalRank, 0);
-  assert.equal(second.canonicalRank, 1);
+  assert.equal(first.canonicalRank, 1);
+  assert.equal(second.canonicalRank, 2);
 });
 
-test("gradedRelevance of a canonical miss reports undefined", () => {
+test("gradedRelevance of a canonical miss reports null", () => {
   const query = { relevant: ["a"] };
   const judgments = gradedRelevance(query, ["z"]);
-  assert.equal(judgments.canonicalRank, undefined);
+  assert.equal(judgments.canonicalRank, null);
   assert.equal(judgments.canonical, "a");
 });
 

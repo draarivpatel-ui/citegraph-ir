@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/ir_engine.js",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --experimental-vm-modules --test test/",
     "bench": "python3 cli/eval_ir.py",
     "bench:queries": "python3 cli/eval_ir.py --queries",
     "report": "node src/report_entry.js"

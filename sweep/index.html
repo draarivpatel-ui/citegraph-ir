@@ -3,8 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-knak8pMMrQj7vn60MsnKzUouOctvib1WUCk/ALMD66w='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
 <title>CiteGraph-IR Calibration Sweep</title>
 <meta name="description" content="The abstention threshold sweep and receiver operating characteristic of the CiteGraph-IR abstention score, computed in the browser.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
 <link rel="stylesheet" href="../shell.css">
 <style>
   .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 18px; }
@@ -18,6 +20,15 @@
   .diag { stroke: var(--de-emphasis); stroke-width: 1; }
   .callout { fill: var(--text-primary); font-size: 11px; font-weight: 600; }
   .callout-ring { fill: none; stroke: var(--text-primary); stroke-width: 1.5; }
+  .scrub { display: grid; gap: 7px; max-width: 560px; margin-bottom: 14px; }
+  .scrub label { font-size: 12px; color: var(--text-secondary); }
+  .scrub output { font-family: var(--mono); font-size: 12px; color: var(--text-primary); }
+  .scrub input { width: 100%; font: inherit; }
+  .scrub input:focus-visible, tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .scrub-readout { display: flex; gap: 18px; flex-wrap: wrap; font-family: var(--mono); font-size: 12px; color: var(--text-secondary); }
+  .scrub-readout b { color: var(--text-primary); font-weight: 600; }
+  tbody tr[data-active="true"] { background: var(--surface-2); }
+  tbody tr[data-active="true"] td:first-child { font-weight: 600; }
 </style>
 </head>
 <body data-page="sweep">
@@ -44,6 +55,12 @@
         <span class="legend-item"><span class="swatch" style="background:var(--series-2)"></span>False answers</span>
         <span class="legend-item"><span class="swatch" style="background:var(--series-3)"></span>Accuracy</span>
       </div>
+    </div>
+    <div class="scrub">
+      <label for="threshold-scrub">Inspect an operating point</label>
+      <input id="threshold-scrub" type="range" min="0" max="13" step="1" value="1">
+      <output id="threshold-scrub-out" for="threshold-scrub"></output>
+      <div class="scrub-readout" id="scrub-readout"></div>
     </div>
     <svg class="chart" id="sweep-chart" viewBox="0 0 640 240" role="img"
          aria-label="Line chart of coverage, false answer rate and accuracy against the abstention threshold."></svg>
@@ -121,8 +138,12 @@
   const recommended = recommendThreshold(sweep);
   const report = buildReport();
 
-  const fmt = (n, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : "-");
+  const fmt = (n, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : "n/a");
   const COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)"];
+  const scrub = document.getElementById("threshold-scrub");
+  const scrubOut = document.getElementById("threshold-scrub-out");
+  const scrubReadout = document.getElementById("scrub-readout");
+  let activeIndex = 1;
 
   /* ---- the sweep chart --------------------------------------------- */
   const svg = document.getElementById("sweep-chart");
@@ -194,7 +215,7 @@
       label.textContent = end.series.label;
     }
 
-    // The recommended operating point, marked once.
+    // The recommended operating point, marked once, and the scrubbed one.
     if (recommended) {
       const cx = x(recommended.threshold);
       const cy = y(recommended.coverage);
@@ -202,6 +223,12 @@
       el("circle", { cx, cy, r: 4, fill: COLORS[0], class: "series-dot" });
       const text = el("text", { x: cx, y: cy - 14, class: "callout", "text-anchor": "middle" });
       text.textContent = `chosen ${recommended.threshold.toFixed(2)}`;
+    }
+    const active = sweep[activeIndex];
+    if (active) {
+      const ax = x(active.threshold);
+      el("line", { x1: ax, y1: PAD.top, x2: ax, y2: PAD.top + ih, stroke: "var(--de-emphasis)", "stroke-width": 1.5, "stroke-dasharray": "4 3" });
+      el("circle", { cx: ax, cy: y(active.coverage), r: 5, fill: "var(--text-primary)", class: "series-dot" });
     }
 
     document.getElementById("sweep-note").textContent = recommended
@@ -285,6 +312,7 @@
   drawRoc();
 
   const body = document.getElementById("sweep-body");
+  const rows = [];
   for (const row of sweep) {
     const tr = document.createElement("tr");
     const cells = [
@@ -296,8 +324,40 @@
       fmt(row.auroc)
     ];
     tr.innerHTML = cells.map((c) => `<td>${c}</td>`).join("");
+    tr.tabIndex = 0;
+    tr.addEventListener("click", () => selectThreshold(rows.indexOf(tr)));
+    tr.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectThreshold(rows.indexOf(tr));
+      }
+    });
     body.appendChild(tr);
+    rows.push(tr);
   }
+
+  function selectThreshold(index) {
+    activeIndex = Math.max(0, Math.min(sweep.length - 1, index));
+    scrub.value = String(activeIndex);
+    const row = sweep[activeIndex];
+    scrubOut.textContent =
+      `threshold ${fmt(row.threshold, 2)}, coverage ${fmt(row.coverage)}, ` +
+      `false answers ${fmt(row.falseAnswerRate)}, accuracy ${fmt(row.accuracy)}`;
+    scrubReadout.innerHTML =
+      `<span>ECE <b>${fmt(row.ece)}</b></span>` +
+      `<span>AUROC <b>${fmt(row.auroc)}</b></span>` +
+      `<span>false answer rate <b>${fmt(row.falseAnswerRate)}</b></span>`;
+    rows.forEach((tr, i) => tr.setAttribute("data-active", String(i === activeIndex)));
+    draw();
+  }
+
+  scrub.max = String(sweep.length - 1);
+  scrub.addEventListener("input", () => selectThreshold(Number(scrub.value)));
+  if (recommended) {
+    const match = sweep.findIndex((row) => row.threshold === recommended.threshold);
+    if (match >= 0) activeIndex = match;
+  }
+  selectThreshold(activeIndex);
 </script>
 </body>
 </html>

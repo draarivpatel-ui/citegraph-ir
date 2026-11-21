@@ -6,8 +6,9 @@
  * is produced on every run over the same engine.
  */
 
-import { runBenchmark, summarize, calibrationSweep, recommendThreshold } from "./benchmark.js";
+import { runBenchmark, summarize, calibrationSweep, recommendThreshold, diagnoseStageMovement } from "./benchmark.js";
 import { faithfulness, recallAtK } from "./ir_engine.js";
+import { attributeRunEvidence, queryFingerprint } from "./provenance.js";
 import { gradedRelevance, EVALUATION_SET } from "./evaluation_set.js";
 
 const STAGES = ["lexical", "dense", "fused", "reranked"];
@@ -46,6 +47,7 @@ export function buildReport(options = {}) {
   }
 
   const abstentionById = new Map(report.abstention.items.map((item) => [item.queryId, item]));
+  const stageMovement = diagnoseStageMovement(report);
 
   const perQuery = [];
   for (const query of EVALUATION_SET.answerable) {
@@ -59,6 +61,10 @@ export function buildReport(options = {}) {
     const topId = run && run.length > 0 ? run[0].id : null;
     const body = topId ? report.engine.bodiesById.get(topId) ?? "" : "";
     const evidence = body ? faithfulness(query.text, body, { idf: report.engine.index.idf }) : null;
+    const attribution = run
+      ? attributeRunEvidence(run, query.text, report.engine.bodiesById, report.engine.index.idf, { topN: 4 })
+      : null;
+    const fingerprint = queryFingerprint(query.text);
 
     perQuery.push({
       queryId: query.id,
@@ -76,7 +82,31 @@ export function buildReport(options = {}) {
       correct: decision ? decision.correct : null,
       evidence: evidence
         ? { docId: topId, score: round(evidence.score, 4), span: evidence.span }
-        : { docId: topId, score: 0, span: null }
+        : { docId: topId, score: 0, span: null },
+      attribution: attribution
+        ? {
+            topCoverage: round(attribution.topCoverage, 4),
+            agreement: round(attribution.agreement, 4),
+            consensusTerms: attribution.consensusTerms,
+            documents: attribution.perDocument.map((doc) => ({
+              docId: doc.docId,
+              rank: doc.rank,
+              coverage: round(doc.coverage, 4),
+              uncovered: doc.uncovered,
+              spans: doc.spans.map((span) => ({
+                score: round(span.score, 4),
+                newTerms: span.newTerms,
+                sentence: span.sentence
+              }))
+            }))
+          }
+        : null,
+      fingerprint: {
+        hash: fingerprint.hash,
+        termCount: fingerprint.termCount,
+        gramCount: fingerprint.gramCount,
+        distinctGrams: fingerprint.distinctGrams
+      }
     });
   }
 
@@ -95,6 +125,7 @@ export function buildReport(options = {}) {
   return {
     project: "CiteGraph-IR",
     corpus: summary.corpus,
+    queryCount: perQuery.length,
     evaluationQueries: summary.evaluationQueries,
     answerable: summary.answerable,
     unanswerable: summary.unanswerable,
@@ -108,6 +139,7 @@ export function buildReport(options = {}) {
       ece: round(recommended.ece, 4),
       auroc: round(recommended.auroc, 4)
     },
+    stageMovement,
     calibrationSweep: sweep.map((row) => ({
       threshold: row.threshold,
       coverage: round(row.coverage, 4),

@@ -48,13 +48,15 @@ test("idf falls as document frequency rises", () => {
   }
 });
 
-test("a term in every document has an idf of zero", () => {
-  const universal = [...index.docFrequency.entries()]
-    .filter(([, df]) => df === index.docCount)
-    .map(([term]) => term);
-  for (const term of universal) {
-    assert.equal(index.idf.get(term), 0);
-  }
+test("a term in every document keeps its small positive idf", () => {
+  const small = buildIndex([
+    { id: "u1", title: "", body: "alpha beta", refs: [] },
+    { id: "u2", title: "", body: "alpha gamma", refs: [] }
+  ]);
+  const idf = small.idf.get("alpha");
+  const expected = Math.max(0, Math.log((small.docCount - 2 + 0.5) / (2 + 0.5) + 1));
+  assert.ok(idf > 0);
+  assert.ok(Math.abs(idf - expected) < 1e-12);
 });
 
 test("idf is clamped at zero for very frequent terms", () => {
