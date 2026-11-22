@@ -162,6 +162,40 @@ def print_roc(report):
         print(f"    {fmt(x, 4).rjust(14)}   {fmt(y, 4).rjust(16)}")
 
 
+def print_cascade(report):
+    """The retraction cascade and circular citation audit table."""
+    cascade = report.get("cascade")
+    if cascade is None:
+        print("  (no cascade data; re-run with --cascade)")
+        return
+    print(
+        f"citation graph: {cascade['documents']} papers, "
+        f"{cascade['citationEdges']} citation edges, "
+        f"{len(cascade['terminals'])} terminal source(s) "
+        f"(primary: {cascade['primarySource']})"
+    )
+    print(f"circular rings found by Tarjan SCC: {len(cascade['circularRings'])}")
+    for ring in cascade["circularRings"]:
+        print(f"    {ring['id']}: {', '.join(ring['members'])}")
+    flagged = [p for p in cascade["articulationPapers"] if p["articulation"]]
+    print(f"single point of failure papers: {len(flagged)}")
+    for row in cascade["articulationPapers"][:5]:
+        mark = "*" if row["articulation"] else " "
+        print(f"   {mark} {row['id']}: retracting it collapses {row['collapseCount']} claim(s)")
+    print()
+    print("  audit                               removed  chains  claims  supported  survival  rings  min depth  collapsed")
+    for row in cascade["audits"]:
+        depth = "-" if row["minSupportDepth"] is None else str(row["minSupportDepth"])
+        survival = "-" if row["survival"] is None else f"{row['survival'] * 100:.1f}%"
+        print(
+            f"  {row['label']:<36}{row['removedCount']:>8}{row['minChains']:>8}"
+            f"{row['claims']:>8}{row['supported']:>11}{survival:>10}"
+            f"{row['circularRings']:>7}{depth:>11}{row['collapsed']:>10}"
+        )
+    print()
+    print(f"  provenance digest (unkeyed SHA-256): {cascade['digest']}")
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         description="Run the CiteGraph-IR benchmark over the bundled collection."
@@ -182,6 +216,11 @@ def build_parser():
     parser.add_argument("--sweep", action="store_true", help="the threshold sweep")
     parser.add_argument("--roc", action="store_true", help="the operating points of the score")
     parser.add_argument(
+        "--cascade",
+        action="store_true",
+        help="the retraction cascade, circular ring and evidence fragility audits",
+    )
+    parser.add_argument(
         "--stage",
         default="reranked",
         choices=["lexical", "dense", "fused", "reranked"],
@@ -200,6 +239,8 @@ def main(argv=None):
         options["threshold"] = args.threshold
     if args.stage != "reranked":
         options["stage"] = args.stage
+    if args.cascade:
+        options["cascade"] = True
 
     if not node_available():
         raise SystemExit("node is required to run the engine")
@@ -223,6 +264,9 @@ def main(argv=None):
     if args.roc:
         print()
         print_roc(report)
+    if args.cascade:
+        print()
+        print_cascade(report)
     return 0
 
 

@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-5TJIvLVC7hVnbFzsQHmKCg4O3g4BI1xGWT1ZNMt9CQ8='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+<title>CiteGraph-IR Cascade Lab</title>
+<meta name="description" content="A retraction cascade, circular citation and evidence fragility workbench over the bundled 40-document citation graph, with exact Tarjan components, vertex disjoint chain counting and a checksummed audit export.">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<link rel="stylesheet" href="../shell.css">
+<style>
+  /* Cascade only: the control rail, the KPI strip, the SVG support graph and
+     the export rail. Chrome lives in shell.css so all four pages stay one
+     surface. */
+  .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
+  .control { display: grid; gap: 6px; }
+  .control label { font-size: 12px; color: var(--text-secondary); }
+  .control select { width: 100%; font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-0); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 6px 9px; }
+  .control select:focus-visible, .control button:focus-visible, .chip:focus-visible,
+  .export-btn:focus-visible, .sel-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .picker-row { display: flex; gap: 10px; }
+  .picker-row select { flex: 1 1 auto; min-width: 0; font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-0); border: 1px solid var(--rule-strong); border-radius: 8px; padding: 7px 10px; }
+  .picker-row button, .export-btn, .verify-row button {
+    font: inherit; font-size: 13px; font-weight: 560; color: #ffffff;
+    background: var(--accent-fill); border: 1px solid var(--accent-fill);
+    border-radius: 8px; padding: 7px 14px; cursor: pointer;
+  }
+  .picker-row button:hover, .export-btn:hover, .verify-row button:hover { filter: brightness(1.08); }
+  .export-btn.ghost, .verify-row button.ghost {
+    color: var(--text-secondary); background: var(--surface-2); border-color: var(--rule);
+  }
+  .export-btn.ghost:hover, .verify-row button.ghost:hover { color: var(--text-primary); border-color: var(--text-muted); filter: none; }
+  .export-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+  .sel-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .sel-chip {
+    font: inherit; font-size: 12px; font-family: var(--mono);
+    color: var(--critical); background: var(--surface-0);
+    border: 1px solid var(--critical); border-radius: 999px; padding: 4px 12px; cursor: pointer;
+  }
+  .sel-chip:hover { background: var(--surface-2); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 10px; overflow: hidden; }
+  .kpi { background: var(--surface-1); padding: 14px 16px 16px; }
+  .kpi .label { font-size: 12px; color: var(--text-secondary); margin-bottom: 5px; }
+  .kpi .value { font-size: 24px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.1; }
+  .kpi .foot { font-size: 12px; color: var(--text-muted); margin-top: 5px; }
+  .kpi .value.bad { color: var(--critical); }
+  .kpi .value.good { color: var(--good); }
+  .kpi .value.warn { color: var(--warning); }
+
+  .graph-scroll { overflow-x: auto; }
+  svg.graph { width: 100%; height: auto; display: block; min-width: 620px; }
+  .edge { fill: none; stroke: var(--rule-strong); stroke-width: 1; opacity: 0.75; }
+  .edge.dead { stroke: var(--de-emphasis); stroke-dasharray: 3 3; opacity: 0.35; }
+  .edge.cut { stroke: var(--critical); stroke-width: 1.6; opacity: 0.9; }
+  .ring-halo { fill: none; stroke: var(--warning); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  .node circle.body { stroke-width: 2; fill: var(--surface-1); }
+  .node text { font-family: var(--mono); font-size: 8px; fill: var(--text-secondary); text-anchor: middle; }
+  .node { cursor: pointer; }
+  .node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .node.st-source circle.body { stroke: var(--text-muted); fill: var(--surface-2); }
+  .node.st-single circle.body { stroke: var(--warning); fill: var(--surface-1); }
+  .node.st-multi circle.body { stroke: var(--good); fill: var(--surface-1); }
+  .node.st-collapsed circle.body { stroke: var(--critical); fill: var(--critical); }
+  .node.st-collapsed text { fill: var(--critical); }
+  .node.st-removed circle.body { stroke: var(--critical); stroke-dasharray: 3 2; fill: var(--surface-2); }
+  .node.st-removed text { fill: var(--de-emphasis); text-decoration: line-through; }
+  .node.st-unsupported circle.body { stroke: var(--de-emphasis); stroke-dasharray: 2 2; fill: var(--surface-1); }
+
+  td.st { font-size: 11px; font-weight: 600; }
+  td.st.collapsed { color: var(--critical); }
+  td.st.multi { color: var(--good); }
+  td.st.single { color: var(--warning); }
+  td.st.source { color: var(--text-muted); }
+  td.st.removed { color: var(--critical); }
+  td.st.unsupported { color: var(--de-emphasis); }
+  td.doc-id { font-family: var(--mono); font-size: 12px; text-align: left; }
+  td.collapse-list { font-family: var(--mono); font-size: 11px; color: var(--text-secondary); text-align: left; white-space: normal; }
+
+  .export-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .digest-line { font-family: var(--mono); font-size: 12px; color: var(--text-secondary); word-break: break-all; margin: 10px 0 4px; }
+  .digest-line b { color: var(--text-primary); font-weight: 600; }
+  .digest-note { font-size: 12px; color: var(--text-muted); margin: 0 0 12px; max-width: 78ch; }
+  .export-view { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; background: var(--surface-0); border: 1px solid var(--rule); border-radius: 8px; padding: 12px 14px; max-height: 320px; overflow: auto; white-space: pre; margin: 0; }
+  .verify-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  textarea.verify-in {
+    width: 100%; font-family: var(--mono); font-size: 11.5px; color: var(--text-primary);
+    background: var(--surface-0); border: 1px solid var(--rule-strong); border-radius: 8px;
+    padding: 9px 12px; min-height: 96px; resize: vertical; box-sizing: border-box;
+  }
+  textarea.verify-in:focus-visible, input.bookmark:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .verify-out { font-size: 13px; margin: 10px 0 0; }
+  .verify-out.ok { color: var(--good); }
+  .verify-out.bad { color: var(--critical); }
+  input.bookmark {
+    width: 100%; font: inherit; font-family: var(--mono); font-size: 12px;
+    color: var(--text-secondary); background: var(--surface-0);
+    border: 1px solid var(--rule-strong); border-radius: 8px; padding: 8px 11px; box-sizing: border-box;
+  }
+  .selftest-list { list-style: none; margin: 12px 0 0; padding: 0; display: grid; gap: 7px; }
+  .selftest-list li { font-size: 13px; display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: baseline; }
+  .selftest-mark { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; }
+  .selftest-mark.pass { color: var(--good); }
+  .selftest-mark.fail { color: var(--critical); }
+  .selftest-detail { color: var(--text-muted); font-family: var(--mono); font-size: 11px; }
+  .selftest-count { font-family: var(--mono); font-size: 13px; color: var(--text-secondary); margin: 12px 0 0; }
+  .selftest-count b { color: var(--text-primary); }
+</style>
+</head>
+<body data-page="cascade">
+<header class="top">
+  <a class="brand" href="../index.html">CiteGraph-IR</a>
+  <nav class="nav" aria-label="Pages">
+    <a href="../lab/" data-nav="lab">Retrieval lab</a>
+    <a href="../sweep/" data-nav="sweep">Calibration sweep</a>
+    <a href="../index.html" data-nav="home">Summary</a>
+  </nav>
+  <button class="theme-toggle" id="theme" type="button">Dark mode</button>
+</header>
+
+<main class="wrap">
+  <h1>The cascade lab</h1>
+
+  <section class="panel" aria-labelledby="controls-head">
+    <div class="panel-head"><h2 id="controls-head">Retraction controls</h2></div>
+    <p class="hint" id="restore-note">
+      Retract papers below or by clicking nodes in the support graph. A claim is
+      supported while it can still trace the required number of internally vertex
+      disjoint citation chains down to terminal sources. Retracting a paper removes
+      it and reports exactly which downstream claims collapse and which survive on
+      independent chains.
+    </p>
+    <div class="chips" role="group" aria-label="Retraction presets">
+      <button class="chip" type="button" id="preset-primary">Retract primary source</button>
+      <button class="chip" type="button" id="preset-ring">Collapse the PageRank ring</button>
+      <button class="chip" type="button" id="preset-unverified">Remove unverified frontier</button>
+      <button class="chip" type="button" id="preset-clear">Clear selection</button>
+    </div>
+    <div class="controls" role="group" aria-label="Cascade controls">
+      <div class="control">
+        <label for="pick">Retract a paper</label>
+        <div class="picker-row">
+          <select id="pick"></select>
+          <button type="button" id="pick-add">Retract</button>
+        </div>
+      </div>
+      <div class="control">
+        <label for="min-chains">Independent chains required</label>
+        <select id="min-chains">
+          <option value="1">1 chain, standard support</option>
+          <option value="2">2 chains, redundant support</option>
+        </select>
+      </div>
+    </div>
+    <div class="sel-chips" id="selection-chips" aria-label="Retracted papers"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="kpi-head">
+    <div class="panel-head"><h2 id="kpi-head">Evidence state under the current selection</h2></div>
+    <div class="kpis" id="kpis" aria-live="polite"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="graph-head">
+    <div class="panel-head">
+      <h2 id="graph-head">The support graph</h2>
+      <div class="legend">
+        <span class="legend-item"><span class="swatch" style="background:var(--good)"></span>Multi chain support</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--warning)"></span>Single chain</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--critical)"></span>Collapsed or retracted</span>
+        <span class="legend-item"><span class="swatch" style="background:var(--text-muted)"></span>Terminal source</span>
+      </div>
+    </div>
+    <p class="hint">
+      Each arrow points from a claim to a source it cites. Sources (terminal papers that cite
+      nothing) sit on the bottom row; deeper claims sit higher. Amber dashed groups are circular
+      citation rings found by exact Tarjan decomposition. Click a node to retract or restore it.
+    </p>
+    <div class="graph-scroll">
+      <svg class="graph" id="graph-svg" viewBox="0 0 760 440" role="img"
+           aria-label="Citation support graph of the collection, layered by distance to terminal sources."></svg>
+    </div>
+    <p class="hint" id="graph-note"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="audit-head">
+    <div class="panel-head"><h2 id="audit-head">Evidence hygiene audits</h2></div>
+    <p class="hint">
+      Six deterministic audits of the same graph. The supported claim survival is the share of
+      non terminal papers still reaching enough independent chains, the ring count is recomputed
+      inside each audited graph, and the minimum support depth is the shortest surviving chain to
+      a terminal source.
+    </p>
+    <div class="tbl-scroll">
+      <table id="audit-table">
+        <thead>
+          <tr>
+            <th scope="col" class="left">Audit</th>
+            <th scope="col">Removed</th>
+            <th scope="col">Min chains</th>
+            <th scope="col">Claims</th>
+            <th scope="col">Supported</th>
+            <th scope="col">Survival</th>
+            <th scope="col">Rings</th>
+            <th scope="col">Min depth</th>
+            <th scope="col">Collapsed</th>
+          </tr>
+        </thead>
+        <tbody id="audit-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="artic-head">
+    <div class="panel-head"><h2 id="artic-head">Single point of failure papers</h2></div>
+    <p class="hint" id="artic-note"></p>
+    <div class="tbl-scroll">
+      <table id="artic-table">
+        <thead>
+          <tr>
+            <th scope="col" class="left">Paper</th>
+            <th scope="col">Claims collapsed</th>
+            <th scope="col" class="left">Downstream claims lost on retraction</th>
+          </tr>
+        </thead>
+        <tbody id="artic-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="export-head">
+    <div class="panel-head"><h2 id="export-head">Checksummed audit export</h2></div>
+    <p class="hint">
+      The report is deterministic JSON: build it twice and the digest is the same. The digest is an
+      unkeyed SHA-256 over the canonical body, so it detects accidental corruption and casual edits.
+      It is not a MAC and not a signature, and it never claims authorship.
+    </p>
+    <div class="export-row" role="group" aria-label="Export format">
+      <button type="button" class="export-btn" id="export-json">JSON</button>
+      <button type="button" class="export-btn ghost" id="export-csv">CSV</button>
+      <button type="button" class="export-btn ghost" id="export-md">Markdown</button>
+      <button type="button" class="export-btn ghost" id="export-dl">Download</button>
+      <button type="button" class="export-btn ghost" id="export-copy">Copy</button>
+    </div>
+    <p class="digest-line" id="digest-line"></p>
+    <p class="digest-note" id="digest-note"></p>
+    <pre class="export-view" id="export-view"></pre>
+    <div class="verify-row">
+      <button type="button" id="verify-btn">Verify a pasted report</button>
+      <button type="button" class="ghost" id="tamper-btn">Tamper check</button>
+    </div>
+    <textarea class="verify-in" id="verify-input" spellcheck="false"
+      aria-label="Paste a provenance audit report here to verify its digest"></textarea>
+    <p class="verify-out" id="verify-out" role="status"></p>
+  </section>
+
+  <section class="panel" aria-labelledby="selftest-head">
+    <div class="panel-head"><h2 id="selftest-head">Self tests, live in this page</h2></div>
+    <p class="hint">
+      The same proofs the unit suite runs: Tarjan exactness, acyclic graphs have zero non trivial
+      components, retraction monotonicity, multi path survival, CSV escaping, tamper detection and
+      FIPS 180-4 known answers, all recomputed in this tab.
+    </p>
+    <div class="export-row">
+      <button type="button" class="export-btn" id="selftest-btn">Run self tests</button>
+    </div>
+    <p class="selftest-count" id="selftest-count"></p>
+    <ul class="selftest-list" id="selftest-list"></ul>
+  </section>
+
+  <section class="panel" aria-labelledby="bookmark-head">
+    <div class="panel-head"><h2 id="bookmark-head">Bookmark this state</h2></div>
+    <p class="hint">
+      The current retraction selection is encoded in the URL hash. Copy the link to reopen the
+      workbench on exactly this scenario.
+    </p>
+    <input class="bookmark" id="bookmark-url" type="text" readonly aria-label="Bookmark URL for this cascade state">
+  </section>
+</main>
+
+<footer class="foot">
+  <span>Zero dependencies. Every number on this page is computed in the tab.</span>
+  <a href="../index.html">Back to the summary</a>
+</footer>
+
+<script type="module">
+  /* ---- theme ------------------------------------------------------- */
+  const stored = (() => { try { return localStorage.getItem("citegraph-theme"); } catch { return null; } })();
+  if (stored === "dark" || stored === "light") document.documentElement.dataset.theme = stored;
+  const toggle = document.getElementById("theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const isDark = () => (document.documentElement.dataset.theme ?? (prefersDark ? "dark" : "light")) === "dark";
+  const syncToggle = () => { toggle.textContent = isDark() ? "Light mode" : "Dark mode"; };
+  toggle.addEventListener("click", () => {
+    const next = isDark() ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("citegraph-theme", next); } catch { /* private mode */ }
+    syncToggle();
+  });
+  syncToggle();
+  for (const link of document.querySelectorAll("[data-nav]")) {
+    if (link.getAttribute("data-nav") === document.body.dataset.page) link.setAttribute("aria-current", "page");
+  }
+
+  /* ---- engine and analysis ----------------------------------------- */
+  const { buildEngine } = await import("../src/benchmark.js");
+  const cascade = await import("../src/cascade_lab.js");
+  const exp = await import("../src/report_export.js");
+  const hashMod = await import("../src/url_hash.js");
+  const { runSelfTests } = await import("../src/selftest.js");
+  const { CORPUS } = await import("../src/corpus.js");
+
+  const engine = buildEngine();
+  const graph = engine.graph;
+  const analysis = cascade.buildCascadeAnalysis(graph);
+  const TITLES = new Map(CORPUS.map((d) => [d.id, d.title]));
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n, d = 4) => (Number.isFinite(n) ? n.toFixed(d) : "n/a");
+  const pct = (v) => (v * 100).toFixed(1) + "%";
+  const escapeHtml = (value) => String(value)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+  const state = { retracted: new Set(), minChains: 1 };
+  let last = null;
+  let exportFormat = "json";
+
+  /* ---- support graph layout: layered condensation of the SCC DAG --- */
+  const svg = $("graph-svg");
+  const NS = "http://www.w3.org/2000/svg";
+  const svgEl = (name, attrs = {}, parent = svg) => {
+    const node = document.createElementNS(NS, name);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, String(v));
+    parent.appendChild(node);
+    return node;
+  };
+
+  function layoutGraph() {
+    const comps = cascade.stronglyConnectedComponents(graph);
+    const compOf = new Map();
+    comps.forEach((comp, i) => comp.members.forEach((id) => compOf.set(id, i)));
+    const cond = comps.map(() => new Set());
+    for (const id of graph.ids) {
+      for (const ref of graph.outLinks.get(id) ?? []) {
+        const a = compOf.get(id);
+        const b = compOf.get(ref);
+        if (a !== b) cond[a].add(b);
+      }
+    }
+    const layerMemo = new Map();
+    const layer = (c) => {
+      if (layerMemo.has(c)) return layerMemo.get(c);
+      layerMemo.set(c, 0);
+      let best = 0;
+      for (const next of cond[c]) best = Math.max(best, 1 + layer(next));
+      layerMemo.set(c, best);
+      return best;
+    };
+    comps.forEach((_, i) => layer(i));
+
+    const rows = new Map();
+    comps.forEach((comp, i) => {
+      const ly = layerMemo.get(i);
+      if (!rows.has(ly)) rows.set(ly, []);
+      for (const id of comp.members) rows.get(ly).push({ id, comp: i });
+    });
+    const W = 760, H = 440, padX = 34, padY = 30;
+    const maxLayer = Math.max(...rows.keys(), 0);
+    const pos = new Map();
+    for (const [ly, nodes] of rows) {
+      nodes.sort((a, b) => (a.comp - b.comp) || (a.id < b.id ? -1 : 1));
+      const step = (W - 2 * padX) / Math.max(1, nodes.length);
+      nodes.forEach((entry, i) => {
+        const x = padX + step * (i + 0.5);
+        const y = H - padY - (ly / (maxLayer || 1)) * (H - 2 * padY);
+        pos.set(entry.id, { x, y });
+      });
+    }
+    return { pos, comps };
+  }
+
+  const layout = layoutGraph();
+  const nodeEls = new Map();
+  const edgeEls = [];
+
+  function drawGraphOnce() {
+    svg.innerHTML = "";
+    const defs = svgEl("defs", {});
+    const marker = svgEl("marker", {
+      id: "arrow", viewBox: "0 0 8 8", refX: 7, refY: 4,
+      markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse"
+    }, defs);
+    svgEl("path", { d: "M 0 0 L 8 4 L 0 8 z", fill: "var(--rule-strong)" }, marker);
+
+    for (const id of [...graph.ids].sort()) {
+      const from = layout.pos.get(id);
+      for (const ref of graph.outLinks.get(id) ?? []) {
+        const to = layout.pos.get(ref);
+        if (!from || !to) continue;
+        const midY = (from.y + to.y) / 2;
+        const path = svgEl("path", {
+          d: `M ${from.x.toFixed(1)} ${from.y.toFixed(1)} C ${from.x.toFixed(1)} ${midY.toFixed(1)} ${to.x.toFixed(1)} ${midY.toFixed(1)} ${to.x.toFixed(1)} ${to.y.toFixed(1)}`,
+          class: "edge", "marker-end": "url(#arrow)"
+        });
+        edgeEls.push({ el: path, from: id, to: ref });
+      }
+    }
+
+    for (const comp of layout.comps) {
+      if (!comp.ring || comp.members.length < 2) continue;
+      const cells = comp.members.map((id) => layout.pos.get(id)).filter(Boolean);
+      if (cells.length === 0) continue;
+      const xs = cells.map((c) => c.x);
+      const ys = cells.map((c) => c.y);
+      svgEl("rect", {
+        x: Math.min(...xs) - 24, y: Math.min(...ys) - 22,
+        width: Math.max(...xs) - Math.min(...xs) + 48,
+        height: Math.max(...ys) - Math.min(...ys) + 34,
+        rx: 12, class: "ring-halo"
+      });
+    }
+
+    for (const id of [...graph.ids].sort()) {
+      const p = layout.pos.get(id);
+      if (!p) continue;
+      const g = svgEl("g", { class: "node", "data-doc": id, tabindex: "0", role: "button" });
+      g.setAttribute("aria-label", `${id}, a document in the support graph`);
+      svgEl("circle", { cx: p.x, cy: p.y, r: 9, class: "body" }, g);
+      const label = svgEl("text", { x: p.x, y: p.y + 20 }, g);
+      label.textContent = id.length > 16 ? id.slice(0, 15) + "…" : id;
+      const tip = svgEl("title", {}, g);
+      tip.textContent = `${TITLES.get(id) ?? id} (${id})`;
+      const onToggle = () => toggleRetract(id);
+      g.addEventListener("click", onToggle);
+      g.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggleRetract(id);
+        }
+      });
+      nodeEls.set(id, g);
+    }
+  }
+
+  function styleGraph(result) {
+    for (const [id, g] of nodeEls) {
+      const removed = state.retracted.has(id);
+      const status = result.perClaim.get(id);
+      let cls = "st-unsupported";
+      let word = "unsupported";
+      if (removed) { cls = "st-removed"; word = "retracted"; }
+      else if (status?.kind === "source") { cls = "st-source"; word = "terminal source"; }
+      else if (status?.collapsed) { cls = "st-collapsed"; word = "collapsed by this retraction"; }
+      else if (status?.supported && status.chains >= 2) { cls = "st-multi"; word = `supported by ${status.chains} chains`; }
+      else if (status?.supported) { cls = "st-single"; word = "supported by one chain"; }
+      g.classList.remove("st-source", "st-single", "st-multi", "st-collapsed", "st-removed", "st-unsupported");
+      g.classList.add(cls);
+      g.setAttribute("aria-label", `${id}: ${word}. Activate to ${removed ? "restore" : "retract"}.`);
+    }
+    for (const edge of edgeEls) {
+      const dead = state.retracted.has(edge.from) || state.retracted.has(edge.to);
+      const cut = !state.retracted.has(edge.from) && state.retracted.has(edge.to);
+      edge.el.setAttribute("class", cut ? "edge cut" : dead ? "edge dead" : "edge");
+    }
+  }
+
+  /* ---- selection ---------------------------------------------------- */
+  function renderSelectionChips() {
+    const host = $("selection-chips");
+    host.innerHTML = "";
+    const ids = [...state.retracted].sort();
+    if (ids.length === 0) {
+      const note = document.createElement("span");
+      note.className = "hint";
+      note.textContent = "Nothing retracted. Pick a preset, a paper, or click nodes in the graph.";
+      host.appendChild(note);
+      return;
+    }
+    for (const id of ids) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "sel-chip";
+      chip.textContent = `${id} ×`;
+      chip.setAttribute("aria-label", `Restore ${id}`);
+      chip.addEventListener("click", () => { state.retracted.delete(id); render(); });
+      host.appendChild(chip);
+    }
+  }
+
+  /* ---- KPIs, audit table, articulation table ------------------------ */
+  function renderKpis(result) {
+    const host = $("kpis");
+    host.innerHTML = "";
+    const items = [
+      ["Supported claims", pct(result.survival), `${result.supportedClaims} of ${result.claimTotal}`, ""],
+      ["Collapsed now", String(result.invalidated.length), "claims lost all support", result.invalidated.length ? "bad" : ""],
+      ["Multi chain survivors", String(result.survivingMultiPath.length), "two or more chains", "good"],
+      ["Single chain survivors", String(result.survivingSinglePath.length), "one retraction from collapse", "warn"],
+      ["Circular rings", String(result.rings.length), `${analysis.ringMembers.length} papers inside`, "warn"],
+      ["Articulation papers", String(analysis.articulation.filter((r) => r.articulation).length), "each collapses 2+ claims", ""]
+    ];
+    for (const [label, value, foot, tone] of items) {
+      const card = document.createElement("div");
+      card.className = "kpi";
+      card.innerHTML = `<div class="label">${escapeHtml(label)}</div>` +
+        `<div class="value ${tone}">${escapeHtml(value)}</div>` +
+        `<div class="foot">${escapeHtml(foot)}</div>`;
+      host.appendChild(card);
+    }
+  }
+
+  function renderAuditTable(audits) {
+    const body = $("audit-body");
+    body.innerHTML = "";
+    for (const row of audits) {
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td class="doc-id">${escapeHtml(row.label)}</td>` +
+        `<td>${row.removedCount}</td>` +
+        `<td>${row.minChains}</td>` +
+        `<td>${row.claims}</td>` +
+        `<td>${row.supported}</td>` +
+        `<td>${pct(row.survival)}</td>` +
+        `<td>${row.ringCount}</td>` +
+        `<td>${row.minSupportDepth ?? "-"}</td>` +
+        `<td>${row.collapsed}</td>`;
+      body.appendChild(tr);
+    }
+  }
+
+  function renderArticulation() {
+    const rows = analysis.articulation.slice(0, 8);
+    const flagged = analysis.articulation.filter((r) => r.articulation);
+    $("artic-note").textContent =
+      `${flagged.length} of ${analysis.docCount} papers are single points of failure: retracting any one of ` +
+      `them collapses at least two downstream conclusions. The top ${rows.length} by blast count are listed.`;
+    const body = $("artic-body");
+    body.innerHTML = "";
+    for (const row of rows) {
+      const tr = document.createElement("tr");
+      const shown = row.collapses.slice(0, 5);
+      const rest = row.collapses.length - shown.length;
+      tr.innerHTML =
+        `<td class="doc-id">${escapeHtml(row.id)}</td>` +
+        `<td>${row.collapseCount}</td>` +
+        `<td class="collapse-list">${escapeHtml(shown.join(", "))}${rest > 0 ? `, +${rest} more` : ""}</td>`;
+      body.appendChild(tr);
+    }
+  }
+
+  /* ---- exports ------------------------------------------------------- */
+  function exportText(report, format) {
+    if (format === "csv") return exp.reportCsv(report);
+    if (format === "md") return exp.reportMarkdown(report);
+    return JSON.stringify(report, null, 2) + "\n";
+  }
+
+  function renderExport() {
+    const report = last.report;
+    $("export-view").textContent = exportText(report, exportFormat);
+    $("digest-line").innerHTML = `integrity digest <b>sha256 ${report.integrity.digest}</b>`;
+    $("digest-note").textContent = report.integrity.purpose;
+    for (const [id, fmt2] of [["export-json", "json"], ["export-csv", "csv"], ["export-md", "md"]]) {
+      const btn = $(id);
+      btn.classList.toggle("ghost", exportFormat !== fmt2);
+    }
+  }
+
+  function setFormat(format) {
+    exportFormat = format;
+    renderExport();
+  }
+
+  function currentExportJson() {
+    return JSON.stringify(last.report, null, 2) + "\n";
+  }
+
+  /* ---- bookmark ------------------------------------------------------ */
+  function syncBookmark() {
+    const hash = hashMod.encodeCascadeState(state);
+    const base = (typeof location !== "undefined" && typeof location.href === "string")
+      ? location.href.split("#")[0] : "";
+    $("bookmark-url").value = base + hash;
+    try {
+      if (typeof history !== "undefined" && history.replaceState) {
+        history.replaceState(null, "", hash);
+      }
+    } catch { /* a host that forbids replaceState still gets the input value */ }
+  }
+
+  function applyState(retracted, minChains) {
+    state.retracted = new Set(retracted);
+    const mc = Math.floor(minChains ?? 1);
+    state.minChains = Number.isFinite(mc) ? Math.max(1, Math.min(8, mc)) : 1;
+    $("min-chains").value = String(state.minChains);
+  }
+
+  /* ---- main render ---------------------------------------------------- */
+  function render() {
+    const removedArr = [...state.retracted].sort();
+    const result = cascade.retractionCascade(graph, removedArr, { minChains: state.minChains });
+    const audits = cascade.auditSuite(graph, { removed: removedArr, minChains: state.minChains });
+    const report = exp.buildProvenanceReport({
+      graph,
+      analysis: { ...analysis, auditRows: audits },
+      audits,
+      selection: { retracted: removedArr, minChains: state.minChains }
+    });
+    last = { result, audits, report };
+
+    renderSelectionChips();
+    renderKpis(result);
+    styleGraph(result);
+    renderAuditTable(audits);
+    renderArticulation();
+    renderExport();
+    syncBookmark();
+
+    const primary = analysis.primarySource;
+    const note = result.invalidated.length > 0
+      ? `${result.invalidated.length} claim${result.invalidated.length === 1 ? "" : "s"} collapsed: ${result.invalidated.slice(0, 4).join(", ")}${result.invalidated.length > 4 ? `, +${result.invalidated.length - 4} more` : ""}.`
+      : "No claim has collapsed under the current selection.";
+    $("graph-note").textContent =
+      `${analysis.docCount} papers, ${analysis.edgeCount} citation edges, ${analysis.terminals.length} ` +
+      `terminal sources, primary source "${TITLES.get(primary) ?? primary}". ${note}`;
+  }
+
+  function toggleRetract(id) {
+    if (state.retracted.has(id)) state.retracted.delete(id);
+    else state.retracted.add(id);
+    render();
+  }
+
+  /* ---- controls ------------------------------------------------------ */
+  const pick = $("pick");
+  const docIds = [...graph.ids].sort();
+  for (const id of docIds) {
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = `${id} - ${TITLES.get(id) ?? ""}`;
+    pick.appendChild(opt);
+  }
+  pick.value = docIds[0];
+  $("pick-add").addEventListener("click", () => {
+    if (pick.value && graph.ids.has(pick.value)) {
+      state.retracted.add(pick.value);
+      render();
+    }
+  });
+  $("min-chains").addEventListener("change", () => {
+    state.minChains = Math.max(1, Math.min(8, Math.floor(Number($("min-chains").value) || 1)));
+    render();
+  });
+  $("preset-primary").addEventListener("click", () => {
+    applyState(analysis.primarySource === null ? [] : [analysis.primarySource], state.minChains);
+    render();
+  });
+  $("preset-ring").addEventListener("click", () => {
+    const ring = analysis.rings.find((r) => r.members.includes("pagerank-citation-graph")) ?? analysis.rings[0];
+    applyState(ring ? ring.members : [], state.minChains);
+    render();
+  });
+  $("preset-unverified").addEventListener("click", () => {
+    applyState(analysis.unverified, state.minChains);
+    render();
+  });
+  $("preset-clear").addEventListener("click", () => {
+    applyState([], 1);
+    render();
+  });
+  // A browser would reflect the first option as the select value; make the
+  // declared state authoritative so shims and bookmarked states agree.
+  $("min-chains").value = String(state.minChains);
+
+  for (const [id, format] of [["export-json", "json"], ["export-csv", "csv"], ["export-md", "md"]]) {
+    $(id).addEventListener("click", () => setFormat(format));
+  }
+  $("export-copy").addEventListener("click", () => {
+    const text = $("export-view").textContent;
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text);
+    }
+  });
+  $("export-dl").addEventListener("click", () => {
+    if (typeof URL === "undefined" || typeof Blob === "undefined" || !URL.createObjectURL) return;
+    const names = { json: "citegraph-provenance-audit.json", csv: "citegraph-provenance-audit.csv", md: "citegraph-provenance-audit.md" };
+    const blob = new Blob([$("export-view").textContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = names[exportFormat] ?? "citegraph-provenance-audit.txt";
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  /* ---- verify and tamper --------------------------------------------- */
+  $("verify-btn").addEventListener("click", () => {
+    const text = $("verify-input").value;
+    const out = $("verify-out");
+    const result = exp.verifyReportJson(text);
+    if (result.ok) {
+      out.className = "verify-out ok";
+      out.textContent = `Verified intact. sha256 ${result.digest.slice(0, 32)} matches the body exactly.`;
+    } else {
+      out.className = "verify-out bad";
+      out.textContent = result.expected
+        ? `Verification failed: ${result.reason}. Recorded ${result.expected.slice(0, 16)}…, recomputed ${result.digest.slice(0, 16)}….`
+        : `Verification failed: ${result.reason}.`;
+    }
+  });
+  $("tamper-btn").addEventListener("click", () => {
+    const input = $("verify-input");
+    const out = $("verify-out");
+    if (input.value.trim().length === 0) input.value = currentExportJson();
+    const digits = [...input.value.matchAll(/[0-9]/g)];
+    if (digits.length === 0) return;
+    const at = digits[Math.floor(digits.length / 2)].index;
+    input.value = input.value.slice(0, at) + (input.value[at] === "9" ? "8" : "9") + input.value.slice(at + 1);
+    const result = exp.verifyReportJson(input.value);
+    out.className = result.ok ? "verify-out ok" : "verify-out bad";
+    out.textContent = result.ok
+      ? "Tamper check: the edited report still verified, which should not happen."
+      : `Tamper check passed: the single digit edit was detected (${result.reason}).`;
+  });
+
+  /* ---- self tests ----------------------------------------------------- */
+  $("selftest-btn").addEventListener("click", () => {
+    const audits = last?.audits ?? cascade.auditSuite(graph, null);
+    const rows = runSelfTests(graph, { ...analysis, auditRows: audits });
+    const list = $("selftest-list");
+    list.innerHTML = "";
+    let pass = 0;
+    for (const row of rows) {
+      if (row.passed) pass += 1;
+      const li = document.createElement("li");
+      const mark = document.createElement("span");
+      mark.className = `selftest-mark ${row.passed ? "pass" : "fail"}`;
+      mark.textContent = row.passed ? "PASS" : "FAIL";
+      const body = document.createElement("span");
+      body.textContent = row.name + (row.detail ? " " : "");
+      const detail = document.createElement("span");
+      detail.className = "selftest-detail";
+      detail.textContent = row.detail;
+      body.appendChild(detail);
+      li.append(mark, body);
+      list.appendChild(li);
+    }
+    $("selftest-count").innerHTML = `<b>${pass}/${rows.length}</b> checks pass`;
+  });
+
+  /* ---- restore from the URL hash -------------------------------------- */
+  const restored = (typeof location !== "undefined" && typeof location.hash === "string")
+    ? hashMod.decodeCascadeState(location.hash, graph.ids) : null;
+  if (restored) {
+    applyState(restored.state.retracted, restored.state.minChains);
+    if (restored.dropped.length > 0) {
+      $("restore-note").textContent = `Bookmark restored; ${restored.dropped.length} unknown id(s) ignored: ${restored.dropped.join(", ")}.`;
+    }
+  }
+  if (typeof window !== "undefined") {
+    if (window.addEventListener) {
+      window.addEventListener("hashchange", () => {
+        const again = hashMod.decodeCascadeState(location.hash, graph.ids);
+        if (again) { applyState(again.state.retracted, again.state.minChains); render(); }
+      });
+    }
+    window.CascadeLab = { state, render, last: () => last };
+  }
+
+  drawGraphOnce();
+  render();
+</script>
+</body>
+</html>

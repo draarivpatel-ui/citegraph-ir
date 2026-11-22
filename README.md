@@ -16,6 +16,18 @@ ledger that names every claim term the top documents did and did not support,
 and a stage movement analysis that counts how many documents each pipeline stage
 actually reorders.
 
+The cascade lab treats the same citation graph as a support structure. Exact
+Tarjan strongly connected components flag the circular self-supporting rings,
+retraction simulation computes the blast radius of retracting any paper
+(including which claims collapse and which survive on internally vertex
+disjoint chains counted by max-flow), and the single point of failure list
+ranks papers whose retraction collapses the most downstream conclusions. A
+six row evidence hygiene audit battery reports supported claim survival,
+surviving ring count and minimum support depth under fixed transforms. The
+audit exports as JSON, CSV or Markdown behind an unkeyed SHA-256
+tamper-detection digest, and the whole scenario bookmarks into a `#cg=` URL
+hash.
+
 No runtime dependency, no build step, no CDN. The engine is plain ES modules
 that run both under `node --test` and in the browser, so the dashboard and the
 test suite compute the same numbers.
@@ -100,6 +112,7 @@ python3 cli/eval_ir.py --queries      # one row per evaluation query
 python3 cli/eval_ir.py --unanswerable # the abstention decisions
 python3 cli/eval_ir.py --sweep        # every threshold
 python3 cli/eval_ir.py --roc          # the operating points of the score
+python3 cli/eval_ir.py --cascade      # rings, articulation papers and the audit battery
 python3 cli/eval_ir.py --json         # the whole report as JSON
 node src/report_entry.js              # the same report straight to stdout
 ```
@@ -119,6 +132,7 @@ python3 -m http.server 8000
 | `/` | headline metrics, the stage table, stage movement, abstention meters, the mean attribution readout |
 | `/lab/` | a question box, four stage rankings, an adjustable abstention threshold, three score column modes, a slider for row depth, and a term by term evidence attribution ledger |
 | `/sweep/` | coverage against false answers, the operating characteristic, every threshold, and a scrubber that selects any operating point |
+| `/cascade/` | the retraction workbench: a clickable support graph, retraction presets, the six audit rows, single point of failure papers, the checksummed export, an in page self test panel and URL hash bookmarking |
 
 Every number on every page is computed in the browser from the same modules
 `node --test` runs. Nothing is a hard-coded result.
@@ -127,11 +141,17 @@ Every number on every page is computed in the browser from the same modules
 
 ```
 index.html            the summary dashboard
-shell.css             the shared surface for all three pages
+shell.css             the shared surface for all four pages
 lab/index.html        the interactive retrieval lab
 sweep/index.html      the calibration sweep and the characteristic curve
+cascade/index.html    the retraction cascade and circular citation workbench
 src/ir_engine.js      the retrieval and abstention engine
 src/provenance.js     evidence attribution, stage movement, query fingerprints
+src/cascade_lab.js    Tarjan SCC, vertex disjoint chains, retraction, audits
+src/sha256.js         a pure JavaScript FIPS 180-4 SHA-256
+src/report_export.js  canonical JSON, the digest, CSV and Markdown exports
+src/url_hash.js       the #cg= bookmark codec
+src/selftest.js       the in-page proof battery
 src/corpus.js         the 40-document citation collection
 src/evaluation_set.js 36 answerable and 5 unanswerable questions
 src/benchmark.js      the run harness, the metrics and the abstention evaluation
@@ -146,11 +166,18 @@ test/helpers/dom.js   a zero dependency DOM shim that executes the page scripts
 
 The suite covers the tokenizers, BM25, the dense vectors, fusion, PageRank,
 faithfulness, abstention, calibration, ranking metrics, the evaluation set, the
-benchmark, the CLI report projection, provenance, stage movement and all three
+benchmark, the CLI report projection, provenance, stage movement and all four
 pages rendered through the DOM shim. Regression tests pin the published stage
 table, the exact aggregate movement numbers and the 87.21 percent attribution
 coverage of the BM25 saturation question, so a later refactor cannot silently
 change a number on the dashboard.
+
+The cascade suites check Tarjan's components against brute force mutual
+reachability on the real corpus, exercise the retraction blast radius on toy
+graphs where the answer is known by construction, prove monotonicity over
+seeded random retraction subsets and every singleton to pair expansion, run
+the FIPS 180-4 known answer vectors, replay the checksummed report through
+tamper cases, and round trip every corpus id through the bookmark codec.
 
 The compliance tests scan every text file in the repository for forbidden dash
 characters and vendor model names, and check that every label, landmark and

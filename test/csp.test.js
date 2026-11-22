@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 import { repoRoot } from "./helpers/dom.js";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const PAGES = ["index.html", "lab/index.html", "sweep/index.html"];
+const PAGES = ["index.html", "lab/index.html", "sweep/index.html", "cascade/index.html"];
 
 const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
 const cspOf = (source) => {

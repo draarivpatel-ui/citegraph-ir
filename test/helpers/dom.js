@@ -102,6 +102,7 @@ export class El {
       this.dataset[camel] = String(value);
     }
     if (name === "id") this.id = String(value);
+    if (name === "class") this.className = String(value);
   }
   getAttribute(name) {
     return Object.prototype.hasOwnProperty.call(this.attrs, name) ? this.attrs[name] : null;
@@ -240,9 +241,35 @@ export function makeDom(page, options = {}) {
     setItem: (k, v) => storage.set(k, String(v)),
     removeItem: (k) => storage.delete(k)
   };
+  const location = {
+    hash: options.hash ?? "",
+    href: options.href ?? "http://localhost/",
+    pathname: options.pathname ?? "/",
+    search: options.search ?? ""
+  };
+  const history = {
+    replaceState(_a, _b, url) {
+      if (typeof url === "string") {
+        const hashIndex = url.indexOf("#");
+        location.hash = hashIndex >= 0 ? url.slice(hashIndex) : "";
+        if (!url.startsWith("#")) location.href = url;
+        else location.href = location.href.split("#")[0] + url;
+      }
+    },
+    pushState() {}
+  };
   const window = {
     matchMedia: () => ({ matches: false, addEventListener() {} }),
     localStorage,
+    location,
+    history,
+    _listeners: {},
+    addEventListener(type, fn) { (this._listeners[type] ??= []).push(fn); },
+    fire(type, extra = {}) {
+      const event = { target: this, preventDefault() {}, ...extra };
+      for (const fn of this._listeners[type] ?? []) fn(event);
+      return event;
+    },
     print() { window.printed = true; },
     printed: false
   };
@@ -250,6 +277,8 @@ export function makeDom(page, options = {}) {
     document,
     window,
     localStorage,
+    location,
+    history,
     console,
     performance: { now: () => 0 },
     setTimeout,

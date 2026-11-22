@@ -10,6 +10,8 @@ import { runBenchmark, summarize, calibrationSweep, recommendThreshold, diagnose
 import { faithfulness, recallAtK } from "./ir_engine.js";
 import { attributeRunEvidence, queryFingerprint } from "./provenance.js";
 import { gradedRelevance, EVALUATION_SET } from "./evaluation_set.js";
+import { buildCascadeAnalysis, auditSuite } from "./cascade_lab.js";
+import { buildProvenanceReport } from "./report_export.js";
 
 const STAGES = ["lexical", "dense", "fused", "reranked"];
 
@@ -122,6 +124,45 @@ export function buildReport(options = {}) {
     };
   });
 
+  const cascade = options.cascade === true
+    ? (() => {
+        const analysis = buildCascadeAnalysis(report.engine.graph);
+        const audits = auditSuite(report.engine.graph);
+        const provenance = buildProvenanceReport({
+          graph: report.engine.graph,
+          analysis,
+          audits,
+          selection: { retracted: [], minChains: 1 }
+        });
+        return {
+          documents: analysis.docCount,
+          citationEdges: analysis.edgeCount,
+          terminals: analysis.terminals,
+          primarySource: analysis.primarySource,
+          circularRings: analysis.rings.map((ring) => ({ id: ring.id, members: ring.members })),
+          unverifiedFrontier: analysis.unverified,
+          articulationPapers: analysis.articulation.map((row) => ({
+            id: row.id,
+            collapseCount: row.collapseCount,
+            articulation: row.articulation
+          })),
+          audits: audits.map((row) => ({
+            id: row.id,
+            label: row.label,
+            removedCount: row.removedCount,
+            minChains: row.minChains,
+            claims: row.claims,
+            supported: row.supported,
+            survival: round(row.survival, 4),
+            circularRings: row.ringCount,
+            minSupportDepth: row.minSupportDepth,
+            collapsed: row.collapsed
+          })),
+          digest: provenance.integrity.digest
+        };
+      })()
+    : null;
+
   return {
     project: "CiteGraph-IR",
     corpus: summary.corpus,
@@ -150,6 +191,7 @@ export function buildReport(options = {}) {
     })),
     roc: report.abstention.roc,
     perQuery,
-    unanswerableRows: unanswerable
+    unanswerableRows: unanswerable,
+    cascade
   };
 }

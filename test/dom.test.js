@@ -16,6 +16,7 @@ import { parsePage, makeDom, runInlineScript, repoRoot } from "./helpers/dom.js"
 const HOME = parsePage("index.html");
 const LAB = parsePage("lab/index.html");
 const SWEEP = parsePage("sweep/index.html");
+const CASCADE = parsePage("cascade/index.html");
 const CSS = fs.readFileSync(path.join(repoRoot, "shell.css"), "utf8");
 
 const read = (rel) => fs.readFileSync(path.join(repoRoot, rel), "utf8");
@@ -40,7 +41,8 @@ const BANNED_NAMES = (() => {
 const PAGES = [
   { name: "home", page: HOME, rel: "index.html" },
   { name: "lab", page: LAB, rel: "lab/index.html" },
-  { name: "sweep", page: SWEEP, rel: "sweep/index.html" }
+  { name: "sweep", page: SWEEP, rel: "sweep/index.html" },
+  { name: "cascade", page: CASCADE, rel: "cascade/index.html" }
 ];
 
 for (const { name, page, rel } of PAGES) {
