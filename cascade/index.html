@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-5TJIvLVC7hVnbFzsQHmKCg4O3g4BI1xGWT1ZNMt9CQ8='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-TrPXp2ocHVwJwg7jX1JsvtOWxOw5eAos2H+uMC+8Fag='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'self'; upgrade-insecure-requests">
 <title>CiteGraph-IR Cascade Lab</title>
 <meta name="description" content="A retraction cascade, circular citation and evidence fragility workbench over the bundled 40-document citation graph, with exact Tarjan components, vertex disjoint chain counting and a checksummed audit export.">
 <link rel="icon" type="image/svg+xml" href="../favicon.svg">
@@ -107,6 +107,7 @@
 </style>
 </head>
 <body data-page="cascade">
+<a class="skip-link" href="#main">Skip to the main content</a>
 <header class="top">
   <a class="brand" href="../index.html">CiteGraph-IR</a>
   <nav class="nav" aria-label="Pages">
@@ -114,10 +115,10 @@
     <a href="../sweep/" data-nav="sweep">Calibration sweep</a>
     <a href="../index.html" data-nav="home">Summary</a>
   </nav>
-  <button class="theme-toggle" id="theme" type="button">Dark mode</button>
+  <button class="theme-toggle" id="theme" type="button" aria-pressed="false">Dark mode</button>
 </header>
 
-<main class="wrap">
+<main class="wrap" id="main">
   <h1>The cascade lab</h1>
 
   <section class="panel" aria-labelledby="controls-head">
@@ -288,7 +289,10 @@
   const toggle = document.getElementById("theme");
   const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const isDark = () => (document.documentElement.dataset.theme ?? (prefersDark ? "dark" : "light")) === "dark";
-  const syncToggle = () => { toggle.textContent = isDark() ? "Light mode" : "Dark mode"; };
+  const syncToggle = () => {
+    toggle.textContent = isDark() ? "Light mode" : "Dark mode";
+    toggle.setAttribute("aria-pressed", String(isDark()));
+  };
   toggle.addEventListener("click", () => {
     const next = isDark() ? "light" : "dark";
     document.documentElement.dataset.theme = next;

@@ -65,7 +65,7 @@ for (const { name, page, rel } of PAGES) {
   test(`DOM ${name}: semantic landmarks, theme toggle and nav links`, () => {
     assert.match(page.source, /<header class="top">/);
     assert.match(page.source, /<nav class="nav" aria-label="Pages">/);
-    assert.match(page.source, /<main class="wrap">/);
+    assert.match(page.source, /<main class="wrap" id="main">/);
     assert.match(page.source, /<footer class="foot">/);
     assert.match(page.source, /id="theme"/);
     assert.match(page.source, /rel="stylesheet" href="\.\.\/shell\.css"|rel="stylesheet" href="shell\.css"/);
@@ -390,4 +390,24 @@ test("UI sweep: every rendered table row has six numeric cells", async () => {
     assert.equal(cells, 6);
     assert.equal(/NaN|undefined/.test(row.innerHTML), false);
   }
+});
+
+for (const { name, page } of PAGES) {
+  test(`DOM ${name}: keyboard users get a skip link to the main landmark`, () => {
+    assert.match(page.source, /<a class="skip-link" href="#main">Skip to the main content<\/a>/);
+    assert.match(page.source, /<main class="wrap" id="main">/);
+  });
+
+  test(`DOM ${name}: the theme toggle exposes its pressed state`, () => {
+    assert.match(page.source, /<button class="theme-toggle" id="theme" type="button" aria-pressed="false">/);
+    assert.match(page.scripts[0], /setAttribute\("aria-pressed",/);
+  });
+}
+
+test("DOM shell.css: motion is explicitly reduced for users who request it", () => {
+  assert.match(CSS, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+});
+
+test("DOM lab: the changing verdict is announced politely", () => {
+  assert.match(LAB.source, /<section class="verdict panel" id="verdict" hidden aria-live="polite">/);
 });

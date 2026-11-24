@@ -180,3 +180,9 @@ test("winsorize handles a single value", () => {
   assert.deepEqual(winsorize([-7]), [0]);
   assert.deepEqual(winsorize([0.3]), [0.3]);
 });
+
+test("regression: recallAtK clamps a negative cutoff instead of slicing from the end", () => {
+  assert.equal(recallAtK(["a", "z"], ["q", "a", "z"], -1), 0);
+  assert.equal(recallAtK(["a"], ["a"], Number.NaN), 0);
+  assert.equal(recallAtK(["a"], ["a"], Number.NEGATIVE_INFINITY), 0);
+});

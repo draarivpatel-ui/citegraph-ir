@@ -80,6 +80,25 @@
   --de-emphasis: #75746c;
 }
 
+
+/* keyboard access and reduced motion -------------------------------------- */
+.skip-link {
+  position: absolute; left: 16px; top: -48px; z-index: 20;
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--rule-strong); border-radius: 7px;
+  padding: 7px 12px; font-size: 13px;
+  transition: top 120ms ease;
+}
+.skip-link:focus-visible { top: 8px; outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {

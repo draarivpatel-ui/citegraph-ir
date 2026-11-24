@@ -397,3 +397,11 @@ test("consistency: JSON, CSV and Markdown all derive from one report object", ()
   assert.ok(md.includes(REPORT.integrity.digest));
   assert.ok(csv.length > 0);
 });
+
+test("regression: verify rejects a report from an unsupported format version", () => {
+  const future = JSON.parse(JSON.stringify(REPORT));
+  future.version = REPORT_VERSION + 1;
+  const result = verifyReportJson(JSON.stringify(future));
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /version/);
+});

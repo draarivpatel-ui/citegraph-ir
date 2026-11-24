@@ -780,7 +780,9 @@ export function reciprocalRank(query, rankedIds, pool) {
 /** The fraction of the pool retrieved within the top k ranks. */
 export function recallAtK(pool, rankedIds, k) {
   if (pool.length === 0) return null;
-  const top = new Set(rankedIds.slice(0, k));
+  const requested = Number.isFinite(k) ? Math.floor(k) : 0;
+  const cutoff = Math.max(0, Math.min(requested, rankedIds.length));
+  const top = new Set(rankedIds.slice(0, cutoff));
   let hit = 0;
   for (const id of pool) if (top.has(id)) hit += 1;
   return hit / pool.length;

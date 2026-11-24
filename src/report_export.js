@@ -171,6 +171,9 @@ export function verifyReportJson(text) {
   if (parsed.body === null || typeof parsed.body !== "object") {
     return { ok: false, reason: "missing report body" };
   }
+  if (parsed.version !== REPORT_VERSION) {
+    return { ok: false, reason: `unsupported report version ${String(parsed.version)}` };
+  }
   const digest = sha256Hex(canonicalJson(parsed.body));
   const expected = integrity.digest.toLowerCase();
   if (digest === expected) {
