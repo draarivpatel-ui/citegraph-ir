@@ -161,8 +161,8 @@ test("UI cascade: the min chains select re-renders with the stricter bar", async
 });
 
 test("UI cascade: the bookmark state clamps minChains into range on decode", async () => {
-  // The select only offers 1 and 2, but a forged hash can request more: the
-  // codec clamps to 8 and applyState keeps the same bound.
+  // A forged hash can request more than the common redundant-support bar: the
+  // codec clamps to 8, and the control exposes that full bookmarkable range.
   const hash = encodeCascadeState({ retracted: ["bm25-okapi"], minChains: 99 });
   const env = await boot({ hash });
   assert.equal(env.getEl("min-chains").value, "8");

@@ -103,8 +103,8 @@ export function charNGrams(text, n = 3) {
 export function buildIndex(documents, options = {}) {
   const k1 = options.k1 ?? 1.2;
   const b = options.b ?? 0.75;
-  if (!(k1 >= 0)) throw new RangeError("k1 must be nonnegative");
-  if (!(b >= 0 && b <= 1)) throw new RangeError("b must be in [0, 1]");
+  if (!Number.isFinite(k1) || k1 < 0) throw new RangeError("k1 must be nonnegative and finite");
+  if (!Number.isFinite(b) || b < 0 || b > 1) throw new RangeError("b must be in [0, 1]");
 
   const docs = [];
   const docFrequency = new Map();
@@ -195,8 +195,8 @@ export function tfWeight(tf) {
 
 /** Inverse document frequency component: log(N / df), floored at zero. */
 export function idfWeight(df, docCount) {
-  if (df <= 0 || docCount <= 0) return 0;
-  return Math.log(docCount / df);
+  if (!Number.isFinite(df) || !Number.isFinite(docCount) || df <= 0 || docCount <= 0) return 0;
+  return Math.max(0, Math.log(docCount / df));
 }
 
 /**
@@ -298,7 +298,7 @@ export function denseRank(dense, documents, query, options = {}) {
  */
 export function reciprocalRankFusion(runs, options = {}) {
   const k = options.k ?? 60;
-  if (!(k >= 0)) throw new RangeError("k must be nonnegative");
+  if (!Number.isFinite(k) || k < 0) throw new RangeError("k must be nonnegative and finite");
   const fused = new Map();
   for (const run of runs) {
     for (const entry of run) {
@@ -675,6 +675,7 @@ export function expectedCalibrationError(items, bins = 15) {
   const counts = new Array(binCount).fill(0);
   const confidence = new Array(binCount).fill(0);
   for (const item of items) {
+    if (item === null || typeof item !== "object") continue;
     // Accept either field name so the same function serves the benchmark items
     // (which carry `score`) and callers that name the field `confidence`.
     const value = item.confidence ?? item.score;
@@ -729,12 +730,17 @@ export function areaUnderRoc(xyPoints) {
  * ties happened to be visited in.
  */
 export function rocPoints(items) {
-  const positives = items.filter((i) => i.answerable === true).length;
-  const negatives = items.length - positives;
+  const scoredItems = items.filter((item) =>
+    item !== null &&
+    typeof item === "object" &&
+    typeof item.score === "number" &&
+    Number.isFinite(item.score));
+  const positives = scoredItems.filter((i) => i.answerable === true).length;
+  const negatives = scoredItems.length - positives;
   if (positives === 0 || negatives === 0) return [];
 
   const groups = new Map();
-  for (const item of items) {
+  for (const item of scoredItems) {
     const key = item.score;
     const group = groups.get(key) ?? { positives: 0, negatives: 0 };
     if (item.answerable === true) group.positives += 1;
@@ -779,13 +785,14 @@ export function reciprocalRank(query, rankedIds, pool) {
 
 /** The fraction of the pool retrieved within the top k ranks. */
 export function recallAtK(pool, rankedIds, k) {
-  if (pool.length === 0) return null;
+  const distinctPool = [...new Set(pool)];
+  if (distinctPool.length === 0) return null;
   const requested = Number.isFinite(k) ? Math.floor(k) : 0;
   const cutoff = Math.max(0, Math.min(requested, rankedIds.length));
   const top = new Set(rankedIds.slice(0, cutoff));
   let hit = 0;
-  for (const id of pool) if (top.has(id)) hit += 1;
-  return hit / pool.length;
+  for (const id of distinctPool) if (top.has(id)) hit += 1;
+  return hit / distinctPool.length;
 }
 
 /**

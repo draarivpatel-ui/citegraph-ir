@@ -49,24 +49,43 @@ function b64urlDecode(text) {
 }
 
 function utf8Decode(bytes) {
+  const continuation = (index) =>
+    index < bytes.length && (bytes[index] & 0xc0) === 0x80;
   let out = "";
   for (let i = 0; i < bytes.length;) {
     const b = bytes[i];
     if (b < 0x80) {
       out += String.fromCharCode(b);
       i += 1;
-    } else if (b < 0xe0) {
+      continue;
+    }
+    if (b >= 0xc2 && b < 0xe0) {
+      if (!continuation(i + 1)) return null;
       out += String.fromCharCode(((b & 0x1f) << 6) | (bytes[i + 1] & 0x3f));
       i += 2;
-    } else if (b < 0xf0) {
-      out += String.fromCharCode(((b & 0x0f) << 12) | ((bytes[i + 1] & 0x3f) << 6) | (bytes[i + 2] & 0x3f));
+      continue;
+    }
+    if (b >= 0xe0 && b < 0xf0) {
+      if (!continuation(i + 1) || !continuation(i + 2)) return null;
+      const second = bytes[i + 1];
+      // Overlong forms and UTF-16 surrogate halves are not valid scalar values.
+      if ((b === 0xe0 && second < 0xa0) || (b === 0xed && second >= 0xa0)) return null;
+      out += String.fromCharCode(((b & 0x0f) << 12) | ((second & 0x3f) << 6) | (bytes[i + 2] & 0x3f));
       i += 3;
-    } else {
-      const cp = ((b & 0x07) << 18) | ((bytes[i + 1] & 0x3f) << 12) |
+      continue;
+    }
+    if (b >= 0xf0 && b <= 0xf4) {
+      if (!continuation(i + 1) || !continuation(i + 2) || !continuation(i + 3)) return null;
+      const second = bytes[i + 1];
+      // Overlong forms and values beyond U+10FFFF are not valid scalar values.
+      if ((b === 0xf0 && second < 0x90) || (b === 0xf4 && second > 0x8f)) return null;
+      const cp = ((b & 0x07) << 18) | ((second & 0x3f) << 12) |
         ((bytes[i + 2] & 0x3f) << 6) | (bytes[i + 3] & 0x3f);
       out += String.fromCodePoint(cp);
       i += 4;
+      continue;
     }
+    return null;
   }
   return out;
 }
@@ -100,9 +119,11 @@ export function decodeCascadeState(hash, validIds) {
 
   const bytes = b64urlDecode(payload);
   if (!bytes || bytes.length === 0) return null;
+  const decoded = utf8Decode(bytes);
+  if (decoded === null) return null;
   let parsed;
   try {
-    parsed = JSON.parse(utf8Decode(bytes));
+    parsed = JSON.parse(decoded);
   } catch {
     return null;
   }

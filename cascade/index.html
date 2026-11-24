@@ -149,6 +149,12 @@
         <select id="min-chains">
           <option value="1">1 chain, standard support</option>
           <option value="2">2 chains, redundant support</option>
+          <option value="3">3 chains, high redundancy</option>
+          <option value="4">4 chains, high redundancy</option>
+          <option value="5">5 chains, strict redundancy</option>
+          <option value="6">6 chains, strict redundancy</option>
+          <option value="7">7 chains, maximum strictness</option>
+          <option value="8">8 chains, maximum strictness</option>
         </select>
       </div>
     </div>
@@ -176,7 +182,7 @@
       citation rings found by exact Tarjan decomposition. Click a node to retract or restore it.
     </p>
     <div class="graph-scroll">
-      <svg class="graph" id="graph-svg" viewBox="0 0 760 440" role="img"
+      <svg class="graph" id="graph-svg" viewBox="0 0 760 440" role="group"
            aria-label="Citation support graph of the collection, layered by distance to terminal sources."></svg>
     </div>
     <p class="hint" id="graph-note"></p>

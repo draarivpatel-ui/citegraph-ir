@@ -225,7 +225,10 @@ export function recommendThreshold(rows) {
   if (safe.length === 0) return null;
   let best = safe[0];
   for (const row of safe) {
-    if (row.coverage > best.coverage) best = row;
+    if (row.coverage > best.coverage ||
+        (row.coverage === best.coverage && row.threshold < best.threshold)) {
+      best = row;
+    }
   }
   return best;
 }

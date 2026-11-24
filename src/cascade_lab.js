@@ -453,7 +453,10 @@ export function runAudit(graph, spec) {
   const removed = new Set([...(spec.removed ?? [])].filter((id) => graph.ids.has(id)));
   const minChains = clampMinChains(spec.minChains);
   const support = claimSupportMap(graph, removed, minChains);
-  const baseline = claimSupportMap(graph, new Set(), minChains);
+  // Collapse is always measured against the intact graph under the standard
+  // one-chain bar. Otherwise the require-two audit would tautologically report
+  // zero collapses even though raising the bar itself withdrew support.
+  const baseline = claimSupportMap(graph, new Set(), 1);
 
   let claims = 0;
   let supported = 0;
