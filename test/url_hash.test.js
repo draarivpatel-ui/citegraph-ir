@@ -202,6 +202,15 @@ test("decode strictness: version constant drives acceptance", () => {
   assert.equal(decodeCascadeState(wrong, IDS), null);
 });
 
+test("decode strictness: non canonical base64url padding bits are rejected", () => {
+  const hash = encodeCascadeState({ retracted: [], minChains: 1 });
+  const payload = hash.slice(4);
+  assert.equal(payload.length % 4, 3);
+  assert.equal(payload.at(-1), "0");
+  const mutated = `#cg=${payload.slice(0, -1)}1`;
+  assert.equal(decodeCascadeState(mutated, IDS), null);
+});
+
 /* ------------------------------------------------------------------ *
  * The codec as the page uses it: restore -> encode -> decode
  * ------------------------------------------------------------------ */

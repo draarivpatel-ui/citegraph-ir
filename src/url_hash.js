@@ -32,6 +32,10 @@ function b64urlEncode(bytes) {
 
 function b64urlDecode(text) {
   const clean = String(text).replace(/=+$/, "");
+  const remainder = clean.length % 4;
+  if (remainder === 1) return null;
+  if (remainder === 2 && (B64URL.indexOf(clean.at(-1)) & 0x0f) !== 0) return null;
+  if (remainder === 3 && (B64URL.indexOf(clean.at(-1)) & 0x03) !== 0) return null;
   const bytes = [];
   let buffer = 0;
   let bits = 0;
