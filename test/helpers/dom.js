@@ -299,29 +299,15 @@ export async function runInlineScript(page, env, scriptIndex = 0) {
   const script = page.scripts[scriptIndex];
   const pageDir = path.dirname(path.join(repoRoot, page.relativePath));
   const moduleUrl = pathToFileURL(path.join(pageDir, "__inline__.mjs")).href;
-  const syntheticFor = async (specifier, referencing = moduleUrl) => {
-    const resolved = new URL(specifier, referencing);
-    const namespace = await import(resolved.href);
-    const keys = Object.keys(namespace);
-    return new vm.SyntheticModule(keys, function () {
-      for (const key of keys) this.setExport(key, namespace[key]);
-    }, { context, identifier: resolved.href });
-  };
   const context = vm.createContext(env.globals);
-  const dynamicImport = async (specifier, referencingModule) => {
-    const mod = await syntheticFor(specifier, referencingModule.identifier ?? moduleUrl);
-    await mod.link((dep, ref) => syntheticFor(dep, ref.identifier ?? moduleUrl));
-    await mod.evaluate();
-    return mod;
-  };
-  const mod = new vm.SourceTextModule(script, {
-    context,
-    identifier: moduleUrl,
-    importModuleDynamically: dynamicImport,
-    initializeImportMeta(meta) { meta.url = moduleUrl; }
+  const imports = [];
+  const rewritten = script.replace(/await\s+import\((["'])([^"']+)\1\)/g, (_all, _quote, specifier) => {
+    imports.push(new URL(specifier, moduleUrl).href);
+    return `__inlineModules[${imports.length - 1}]`;
   });
-  await mod.link((specifier, referencing) => syntheticFor(specifier, referencing.identifier ?? moduleUrl));
-  await mod.evaluate();
-  return mod;
+  env.globals.__inlineModules = await Promise.all(imports.map((href) => import(href)));
+  const result = vm.runInContext(`(async () => {${rewritten}\n})()`, context, { filename: moduleUrl });
+  await result;
+  return { namespace: {} };
 }
 
