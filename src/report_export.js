@@ -195,7 +195,10 @@ export function verifyReportJson(text) {
  */
 export function csvCell(value) {
   let text = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = "'" + text;
+  const lead = (/^[\s\p{Cf}\p{Cc}]*/u.exec(text) || [""])[0];
+  const first = text.charAt(lead.length);
+  const plainNumber = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text.slice(lead.length));
+  if (lead.length > 0 || (first !== "" && "=+-@".indexOf(first) !== -1 && !(first === "-" && plainNumber))) text = "'" + text;
   if (/[",\n\r]/.test(text)) return '"' + text.replace(/"/g, '""') + '"';
   return text;
 }
